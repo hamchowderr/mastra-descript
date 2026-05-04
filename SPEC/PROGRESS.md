@@ -61,6 +61,16 @@
 
 ---
 
+## Phase 13: Tag v0.1.0 — COMPLETE
+- Status: complete
+- Tag: v0.1.0 pushed to https://github.com/hamchowderr/template-mastra-descript
+
+## Phase 12: GitHub repo + CI — COMPLETE
+- Status: complete
+- Repo: https://github.com/hamchowderr/template-mastra-descript
+- CI run 25298707125: typecheck ✓ 29s, build ✓ 45s, eval ✓ 39s, docker ✓ 2m27s
+- CI_APP_SECRET secret set; branch renamed master → main
+
 ## Phase 10: Documentation — COMPLETE
 - Status: complete
 - Files touched: `README.md`, `AGENTS.md`
