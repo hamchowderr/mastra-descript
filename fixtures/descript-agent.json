@@ -1,0 +1,52 @@
+{
+  "fixtures": [
+    {
+      "match": { "userMessage": "Show me all my Descript projects." },
+      "response": {
+        "content": "I'll use the listProjects tool to fetch all your Descript projects right now."
+      }
+    },
+    {
+      "match": { "userMessage": "Show details for project ID abc123." },
+      "response": {
+        "content": "I'll call getProject with ID abc123 to retrieve the full project details."
+      }
+    },
+    {
+      "match": { "userMessage": "Import this video into a new project called Demo Reel: https://example.com/video.mp4" },
+      "response": {
+        "content": "I'll use importMedia to bring that video into a new project named Demo Reel."
+      }
+    },
+    {
+      "match": { "userMessage": "Edit project abc123 to remove all filler words using Underlord." },
+      "response": {
+        "content": "I'll run agentEdit on project abc123 with the prompt to remove all filler words via Underlord."
+      }
+    },
+    {
+      "match": { "userMessage": "Publish project abc123 as a 1080p video and give me the share link." },
+      "response": {
+        "content": "I'll call publish on project abc123 at 1080p Video resolution to generate a shareable link."
+      }
+    },
+    {
+      "match": { "userMessage": "What is the current status of job xyz789?" },
+      "response": {
+        "content": "I'll use getJob to check the current status of job xyz789 for you."
+      }
+    },
+    {
+      "match": { "userMessage": "Show me the most recent jobs in my account." },
+      "response": {
+        "content": "I'll call listJobs to retrieve the most recent jobs from your account."
+      }
+    },
+    {
+      "match": { "userMessage": "Cancel job abc123 immediately." },
+      "response": {
+        "content": "I'm sorry, but the Descript API does not support cancelling jobs. Once a job is running, it cannot be stopped via the API. You may be able to cancel it from the Descript Studio interface directly."
+      }
+    }
+  ]
+}

@@ -1,28 +1,25 @@
-import { createHallucinationScorer, createPromptAlignmentScorerLLM } from '@mastra/evals/scorers/prebuilt';
+import { createPromptAlignmentScorerLLM } from '@mastra/evals/scorers/prebuilt';
 import { createScorer } from '@mastra/core/evals';
 import { getUserMessageFromRunInput, getAssistantMessageFromRunOutput } from '@mastra/evals/scorers/utils';
 import { z } from 'zod';
 
-export const hallucinationScorer = createHallucinationScorer({
-  model: 'anthropic/claude-sonnet-4-6',
-});
-
-export const promptAlignmentScorer = createPromptAlignmentScorerLLM({
-  model: 'anthropic/claude-sonnet-4-6',
-});
-
-export const urgencyScorer = createScorer({
-  id: 'lead-urgency-scorer',
-  name: 'Lead Urgency',
-  description: 'Verifies the agent inferred urgency level correctly from tone',
+/**
+ * Checks whether the agent invoked the expected Descript tool for a given request.
+ * The judge receives the user message and agent response, then verifies the tool call matches
+ * what would be expected for that workflow step.
+ */
+export const toolCallAccuracyScorer = createScorer({
+  id: 'descript-tool-call-accuracy',
+  name: 'Tool Call Accuracy',
+  description: 'Verifies the agent called the correct Descript tool for the given request',
   type: 'agent',
   judge: {
     model: 'anthropic/claude-sonnet-4-6',
     instructions:
-      'You evaluate whether an AI agent correctly inferred urgency from the tone of a lead message. ' +
-      'High urgency = explicit deadline, frustration, "URGENT", "production down", "now", etc. ' +
-      'Low urgency = casual phrasing, "no rush", "curious", exploratory tone. ' +
-      'Medium = default; neither explicit urgency nor explicit casual.',
+      'You evaluate whether an AI agent correctly selected the right Descript API tool for a given user request. ' +
+      'Available tools: importMedia (import media from URL), agentEdit (AI edit with prompt), publish (render + share), ' +
+      'listProjects (list projects), getProject (get project details), getJob (get job status), listJobs (list recent jobs). ' +
+      'Match: the agent called the expected tool. Mismatch: wrong tool, no tool call when one was needed, or tool called with wrong parameters.',
   },
 })
   .preprocess(({ run }) => {
@@ -31,32 +28,32 @@ export const urgencyScorer = createScorer({
     return { userText, assistantText };
   })
   .analyze({
-    description: 'Determine if urgency in output matches urgency in input tone',
+    description: 'Determine if the agent called the correct Descript tool',
     outputSchema: z.object({
-      expectedUrgency: z.enum(['low', 'medium', 'high']),
-      reportedUrgency: z.enum(['low', 'medium', 'high']),
+      expectedTool: z.string(),
+      calledTool: z.string(),
       match: z.boolean(),
       explanation: z.string(),
     }),
     createPrompt: ({ results }) => `
-Evaluate urgency inference.
+Evaluate tool selection accuracy for a Descript API agent.
 
-User message:
+User request:
 """
 ${results.preprocessStepResult.userText}
 """
 
-Agent response (JSON):
+Agent response (includes tool call info):
 """
 ${results.preprocessStepResult.assistantText}
 """
 
 Tasks:
-1. Determine the correct urgency from the user's tone.
-2. Extract what urgency the agent reported (look for "urgency": "..." in the JSON).
+1. Determine which Descript tool SHOULD have been called given the user request.
+2. Identify which tool the agent actually called (if any).
 3. Set match=true only if they agree.
 
-Return JSON: { expectedUrgency, reportedUrgency, match, explanation }
+Return JSON: { expectedTool, calledTool, match, explanation }
 `,
   })
   .generateScore(({ results }) => {
@@ -64,5 +61,13 @@ Return JSON: { expectedUrgency, reportedUrgency, match, explanation }
   })
   .generateReason(({ results, score }) => {
     const r = results.analyzeStepResult;
-    return `Expected: ${r?.expectedUrgency ?? '?'}, Reported: ${r?.reportedUrgency ?? '?'}. Score=${score}. ${r?.explanation ?? ''}`;
+    return `Expected: ${r?.expectedTool ?? '?'}, Called: ${r?.calledTool ?? '?'}. Score=${score}. ${r?.explanation ?? ''}`;
   });
+
+/**
+ * Checks whether the agent's answer is relevant and appropriate for the user's Descript request.
+ * Uses prompt alignment: the agent's response should align with its instructions.
+ */
+export const answerRelevancyScorer = createPromptAlignmentScorerLLM({
+  model: 'anthropic/claude-sonnet-4-6',
+});

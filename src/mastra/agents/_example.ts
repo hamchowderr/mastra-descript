@@ -1,110 +1,52 @@
 import { Agent } from '@mastra/core/agent';
-import { createTool } from '@mastra/core/tools';
 import { Memory } from '@mastra/memory';
-import { openai } from '@ai-sdk/openai';
-import { z } from 'zod';
+import { importMedia } from '../tools/import-media';
+import { agentEdit } from '../tools/agent-edit';
+import { publish } from '../tools/publish';
+import { listProjects, getProject } from '../tools/projects';
+import { getJob, listJobs } from '../tools/jobs';
 
-import {
-  hallucinationScorer,
-  promptAlignmentScorer,
-  urgencyScorer,
-} from '../scorers/_example.scorers';
+export const descriptAgent = new Agent({
+  id: 'descript',
+  name: 'Descript',
+  description: 'Automates Descript video and audio editing workflows via natural language. Imports media from URLs, runs AI edits via Underlord, publishes shareable links, and manages projects and jobs.',
+  model: 'anthropic/claude-sonnet-4-6',
+  instructions: `You are an automation agent for Descript, a video and audio editing platform with an AI editor called Underlord.
 
-/**
- * # Lead Intake Agent (canonical example)
- *
- * What it does:
- *   Takes unstructured text (email body, voice transcript, form submission)
- *   and returns structured lead data validated against LeadSchema.
- *
- * Who calls it:
- *   - n8n / Make webhook
- *   - Next.js API route
- *   - VAPI/LiveKit tool callback
- *   Endpoint: POST /api/agents/leadIntake/generate
- *
- * Env vars required:
- *   - ANTHROPIC_API_KEY (default model)
- *
- * How to test:
- *   curl -X POST http://localhost:4111/api/agents/leadIntake/generate \
- *     -H "Content-Type: application/json" \
- *     -d '{
- *       "messages": [{
- *         "role": "user",
- *         "content": "Hi, this is John from Acme Corp (john@acme.io). We need pricing for 50 seats by Friday."
- *       }]
- *     }'
- *
- * Copy this file, rename, and adapt for new agents.
- */
+You can:
+- Import media from a public URL into a project (importMedia)
+- Edit a project with a natural language prompt (agentEdit) — this is Underlord doing the actual editing
+- Publish a composition to a shareable + downloadable link (publish)
+- List and inspect projects (listProjects, getProject)
+- Check job status (getJob, listJobs)
 
-export const LeadSchema = z.object({
-  name: z.string().nullable().describe('Full name of the lead, or null if not found'),
-  email: z.string().nullable().describe('Email address, or null'),
-  company: z.string().nullable().describe('Company name, or null'),
-  intent: z
-    .enum(['demo', 'pricing', 'support', 'partnership', 'other'])
-    .describe('What the lead wants'),
-  urgency: z.enum(['low', 'medium', 'high']).describe('Tone-based urgency'),
-  notes: z.string().describe('One-sentence summary of context'),
-});
+How Descript works:
+- All mutations (import, edit, publish) are async. They return a job_id and you poll until the job completes.
+- The tools handle polling automatically — they don't return until the underlying job is done.
+- A job has TWO status fields: top-level job_state ("running" | "stopped") and nested result.status ("success" | "partial" | "failed"). Tools return both as separate fields.
+- If a job fails, report the error clearly. Do not retry automatically.
 
-export type Lead = z.infer<typeof LeadSchema>;
+Common workflows:
 
-const validateEmail = createTool({
-  id: 'validateEmail',
-  description: 'Validate and normalize an email address',
-  inputSchema: z.object({ email: z.string().nullable() }),
-  outputSchema: z.object({
-    valid: z.boolean(),
-    normalized: z.string().nullable(),
-    reason: z.string().nullable(),
-  }),
-  execute: async ({ email }) => {
-    if (!email) return { valid: false, normalized: null, reason: 'No email provided' };
-    const result = z.string().email().safeParse(email.trim().toLowerCase());
-    if (!result.success) {
-      return {
-        valid: false,
-        normalized: null,
-        reason: result.error.issues[0]?.message ?? 'Invalid email format',
-      };
-    }
-    return { valid: true, normalized: result.data, reason: null };
-  },
-});
+1. Import + edit + publish (full pipeline):
+   - importMedia({ media_url, project_name }) → returns project_id
+   - agentEdit({ project_id, prompt }) → AI does the editing
+   - publish({ project_id, media_type: 'Video', resolution: '1080p' }) → returns share_url
 
-export const leadIntakeAgent = new Agent({
-  id: 'leadIntake',
-  name: 'Lead Intake',
-  description: 'Extracts structured contact and intent data from inbound lead messages. Returns email, phone, name, summary, and urgency rating.',
-  instructions: `You extract structured lead information from unstructured text.
+2. Edit existing project:
+   - listProjects({ name: '...' }) to find it (if you don't have the ID)
+   - agentEdit({ project_id, prompt })
 
-Inputs may be email bodies, voice transcripts, or form submissions.
+3. New project from prompt only (no media):
+   - agentEdit({ project_name: '...', prompt: 'Write a 60-second script about X' })
+   - This creates a new project. No importMedia needed.
 
 Rules:
-- If a field is not present, return null. Never guess or fabricate.
-- When you find an email address, call validateEmail to confirm it parses cleanly.
-- The notes field is one short sentence summarizing what the lead actually wants.
-- Urgency reflects tone: explicit deadlines or frustration → high; "would love to learn more" → low; default → medium.
-
-Output rules (strictly enforced):
-- Your response is ONLY the JSON object. Nothing else.
-- Never write any text before or after the JSON — no "Let me...", no "Got it!", no "Here is...", no commentary of any kind.
-- Never narrate tool calls. Call tools silently; they produce no visible output to the user.
-- If information is missing, still return the JSON with null fields. Do not ask follow-up questions.`,
-  model: openai.chat('gpt-4o-mini'),
-  tools: { validateEmail },
+- Never fabricate job results. The tools return the real job status — trust them.
+- When chaining import → edit, wait for importMedia to complete (status: "success") before calling agentEdit.
+- If status is "partial", surface that to the user — partial means some operations succeeded but others didn't.
+- For publish, default to Video at 1080p unless the user specifies otherwise.
+- If a tool call returns status "failed" with an error message, summarize the error for the user without retrying.`,
+  tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs },
   memory: new Memory(),
-  scorers: {
-    hallucination: {
-      scorer: hallucinationScorer,
-      sampling: { type: 'ratio', rate: 1 },
-    },
-    urgency: {
-      scorer: urgencyScorer,
-      sampling: { type: 'ratio', rate: 1 },
-    },
-  },
 });

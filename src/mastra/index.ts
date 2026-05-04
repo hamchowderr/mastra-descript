@@ -5,7 +5,14 @@ import { env } from '../lib/env';
 import { configureAIMock } from './lib/aimock';
 configureAIMock();
 
-// 3. Mastra imports — agents/tools constructed below now see the right base URLs
+// 3. Optional: Descript health check — validates token on every boot
+import { DescriptClient } from './lib/descript-client';
+if (env.DESCRIPT_HEALTHCHECK_ON_BOOT) {
+  const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
+  await client.healthcheck();
+}
+
+// 4. Mastra imports — agents/tools constructed below now see the right base URLs
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { PostgresStore } from '@mastra/pg';
@@ -14,22 +21,22 @@ import { MastraCompositeStore } from '@mastra/core/storage';
 import { Observability, DefaultExporter, SensitiveDataFilter } from '@mastra/observability';
 import { MastraEditor } from '@mastra/editor';
 import { MCPServer } from '@mastra/mcp';
-import { leadIntakeAgent } from './agents/_example';
-import { hallucinationScorer, promptAlignmentScorer, urgencyScorer } from './scorers/_example.scorers';
+import { descriptAgent } from './agents/_example';
+import { toolCallAccuracyScorer, answerRelevancyScorer } from './scorers/_example.scorers';
 
-const mcpServer = new MCPServer({
-  id: 'base-mcp',
-  name: 'template-mastra-base',
+const descriptMcp = new MCPServer({
+  id: 'descript-mcp',
+  name: 'template-mastra-descript',
   version: '0.1.0',
-  description: 'MCP server exposing template-mastra-base agents as tools',
+  description: 'MCP server exposing the descriptAgent for Descript API workflows',
   tools: {},
-  agents: { leadIntake: leadIntakeAgent },
+  agents: { descript: descriptAgent },
 });
 
 export const mastra = new Mastra({
-  agents: { leadIntake: leadIntakeAgent },
-  scorers: { hallucinationScorer, promptAlignmentScorer, urgencyScorer },
-  mcpServers: { baseMcp: mcpServer },
+  agents: { descript: descriptAgent },
+  scorers: { toolCallAccuracyScorer, answerRelevancyScorer },
+  mcpServers: { descriptMcp },
   storage: new MastraCompositeStore({
     id: 'composite-storage',
     default: new PostgresStore({ id: 'mastra-storage', connectionString: env.SUPABASE_DB_URL }),

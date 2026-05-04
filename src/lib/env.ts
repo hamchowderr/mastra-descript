@@ -29,6 +29,15 @@ const envSchema = z
 
     MASTRA_TELEMETRY_DISABLED: z.string().optional(),
     MASTRA_CLOUD_ACCESS_TOKEN: z.string().optional(),
+
+    // Descript API
+    DESCRIPT_API_TOKEN: z.string().min(1, 'Descript API token required (Bearer token from Descript Settings → API tokens)'),
+    DESCRIPT_BASE_URL: z.string().url().default('https://descriptapi.com/v1'),
+    DESCRIPT_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
+    DESCRIPT_RETRIES: z.coerce.number().int().min(0).default(3),
+    DESCRIPT_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(3000),
+    DESCRIPT_POLL_MAX_ATTEMPTS: z.coerce.number().int().positive().default(600),
+    DESCRIPT_HEALTHCHECK_ON_BOOT: z.coerce.boolean().default(false),
   })
   .refine(
     (e) => Boolean(e.ANTHROPIC_API_KEY || e.OPENAI_API_KEY || e.GOOGLE_GENERATIVE_AI_API_KEY),
