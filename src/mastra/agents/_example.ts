@@ -1,10 +1,11 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 import { importMedia } from '../tools/import-media';
 import { agentEdit } from '../tools/agent-edit';
 import { publish } from '../tools/publish';
 import { listProjects, getProject } from '../tools/projects';
 import { getJob, listJobs } from '../tools/jobs';
+import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
+import { createDefaultMemory } from '../lib/memory';
 
 export const descriptAgent = new Agent({
   id: 'descript',
@@ -48,5 +49,8 @@ Rules:
 - For publish, default to Video at 1080p unless the user specifies otherwise.
 - If a tool call returns status "failed" with an error message, summarize the error for the user without retrying.`,
   tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs },
-  memory: new Memory(),
+  memory: createDefaultMemory(),
+  // Shared safety/hygiene baseline — see src/mastra/lib/processors.ts.
+  inputProcessors: defaultInputProcessors,
+  outputProcessors: defaultOutputProcessors,
 });

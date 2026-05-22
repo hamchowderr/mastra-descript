@@ -41,16 +41,19 @@ npm install --save-dev tsx
 
 **Checkpoint**: `npm list @mastra/pg @supabase/supabase-js tsx` shows all three. No peer dependency warnings beyond what's expected.
 
-## Phase 3: Env loader + AIMock + Supabase factory
+## Phase 3: Env loader + AIMock + Supabase + Descript client
 
 In order:
 
-1. Write `src/lib/env.ts` per spec.
+1. Write `src/lib/env.ts` per spec (extended with the `DESCRIPT_*` vars).
 2. Write `.env.example` per spec.
 3. Write `src/mastra/lib/aimock.ts` per spec.
 4. Write `src/mastra/lib/supabase.ts` per spec.
+5. Write `src/mastra/lib/processors.ts` per spec (UnicodeNormalizer + TokenLimiter active; rest commented).
+6. Write `src/mastra/lib/memory.ts` per spec (`createDefaultMemory()`, working memory on, recall off).
+7. Write `src/mastra/lib/descript-client.ts` per spec (auth, retry, timeout, `pollJob`).
 
-**Checkpoint**: `npm run typecheck` passes. No file at `src/mastra/lib/logger.ts` — that was removed from the plan.
+**Checkpoint**: `npm run typecheck` passes. Optionally run `npm run descript:ping` (real token) to confirm the client authenticates. No file at `src/mastra/lib/logger.ts` — that was removed from the plan.
 
 ## Phase 4: Rewrite Mastra entry point
 
@@ -108,20 +111,21 @@ export const mastra = new Mastra({
 
 **Checkpoint**: `npm run typecheck` passes.
 
-## Phase 6: Example agent
+## Phase 6: Tools + example agent
 
-1. Write `src/mastra/agents/_example.ts` per spec.
-2. Update `src/mastra/index.ts` to import and register the agent and scorers (uncomment from Phase 4).
+1. Write the five tool files per spec — `tools/import-media.ts`, `agent-edit.ts`, `publish.ts`, `projects.ts`, `jobs.ts` (each calls `DescriptClient`; mutating tools poll to completion).
+2. Write `src/mastra/agents/_example.ts` per spec — registers all seven tools, plus `memory: createDefaultMemory()` and the shared `inputProcessors` / `outputProcessors` from `lib/`.
+3. Update `src/mastra/index.ts` to import and register the agent and scorers (uncomment from Phase 4).
 
 **Checkpoint**:
 1. `npm run typecheck` passes.
-2. `npm run dev` boots; Studio shows `leadIntake` agent.
-3. **Live smoke test**: chat with the agent in Studio (real Anthropic key). Send: "Hi, this is John from Acme Corp (john@acme.io). We need pricing for 50 seats by Friday." Expected: structured output matching LeadSchema, validateEmail tool invoked.
+2. `npm run dev` boots; Studio shows the `descript` agent.
+3. **Live smoke test**: chat with the agent in Studio (real Descript token). Send: "Show me all my Descript projects." Expected: the agent calls `listProjects` and returns real project data.
 4. cURL test:
    ```bash
-   curl -X POST http://localhost:4111/api/agents/leadIntake/generate \
+   curl -X POST http://localhost:4111/api/agents/descript/generate \
      -H "Content-Type: application/json" \
-     -d '{"messages":[{"role":"user","content":"Hi, this is John from Acme Corp (john@acme.io). We need pricing for 50 seats by Friday."}]}'
+     -d '{"messages":[{"role":"user","content":"Show me all my Descript projects."}]}'
    ```
 
 ## Phase 7: Swap LibSQL → @mastra/pg
@@ -151,7 +155,7 @@ export const mastra = new Mastra({
 4. Write `compose.dev.yml` per spec.
 
 **Checkpoint**:
-1. `docker build -t template-mastra-base:test .` succeeds.
+1. `docker build -t template-mastra-descript:test .` succeeds.
 2. `docker compose up -d` starts a healthy container.
 3. `curl http://localhost:4111/api/health` returns 200.
 4. `docker compose down` cleans up.

@@ -6,12 +6,20 @@ The original verification test #4 was "click around in Studio and confirm the ag
 
 Mastra Studio is the development experience the owner ships to clients. If a client opens Studio and the agent feels broken (slow, missing tools, weird trace output), the template fails its purpose regardless of whether typecheck and CI pass.
 
+## Prerequisites
+
+The Descript agent calls the real Descript API. You need:
+- A valid `DESCRIPT_API_TOKEN` in `.env` (scoped to a Drive you can read).
+- For full pipeline tests, a publicly-accessible media URL to import.
+
+Read-only calls (`listProjects`, `getProject`, `getJob`, `listJobs`) are cheap and safe; mutations (`importMedia`, `agentEdit`, `publish`) start real async jobs.
+
 ## Steps
 
 ### 1. Boot the dev server
 
 ```bash
-cd C:\Users\HamCh\code\template-mastra-base
+cd C:\Users\HamCh\code\template-mastra-descript
 npm run dev
 ```
 
@@ -23,93 +31,100 @@ Visit `http://localhost:4111` in a browser.
 
 **Pass criteria for the landing page:**
 - Studio loads without errors
-- `leadIntake` agent appears in the agent list/sidebar
+- `descript` agent appears in the agent list/sidebar
 - No red error banners or warnings about missing config
 
-### 3. Open the leadIntake agent
+### 3. Open the descript agent
 
-Click into `leadIntake`. You should see:
+Click into `descript`. You should see:
 
 **Pass criteria:**
 - Agent name and description visible
 - Chat interface ready to accept input
-- Tool list shows `validateEmail` (or however Studio displays attached tools)
-- Scorer list shows three scorers: hallucination, completeness, urgency
+- Tool list shows the seven Descript tools: `importMedia`, `agentEdit`, `publish`, `listProjects`, `getProject`, `getJob`, `listJobs`
+- Scorer list shows two scorers: `toolCallAccuracy`, `answerRelevancy`
+- Editor tab present on the agent
 - Memory panel shows empty (no prior threads)
 
-### 4. Send a canonical input
+### 4. Send a read-only request
 
 Paste this into the chat:
 
 ```
-Hi, this is John Smith from Acme Corp (john@acme.io). We need pricing for 50 seats by Friday.
+Show me all my Descript projects.
 ```
 
 **Pass criteria for the response:**
-- Agent responds within ~5 seconds
-- Response is structured JSON matching `LeadSchema`
-- Fields populated correctly:
-  - `name`: "John Smith"
-  - `email`: "john@acme.io"
-  - `company`: "Acme Corp"
-  - `intent`: "pricing"
-  - `urgency`: "high"
-  - `notes`: present and non-empty
-- No fabricated fields
+- Agent responds within a few seconds
+- The `listProjects` tool was invoked (verify in trace, step 6)
+- Response reports the real project list from your Drive
+- No fabricated projects
 
-### 5. Inspect the trace
+### 5. Send a job-status request
 
-Open the trace view for the request you just sent. You're checking that observability is working.
+```
+What is the current status of job xyz789?
+```
+
+**Pass criteria:**
+- The `getJob` tool was invoked
+- The response reports the job's `job_state` ("running" | "stopped") and nested `result.status` ("success" | "partial" | "failed")
+- If the job ID doesn't exist, the agent surfaces the API error clearly rather than fabricating a status
+
+### 6. Inspect the trace
+
+Open the trace view for a request you just sent. You're checking that observability is working.
 
 **Pass criteria:**
 - Trace appears in the trace list
-- Span hierarchy shows: agent run → LLM call → tool call (validateEmail)
-- Tool call shows input (`{ email: "john@acme.io" }`) and output (`{ valid: true, normalized: "john@acme.io", reason: null }`)
-- Total duration is reasonable (< 10s)
+- Span hierarchy shows: agent run → LLM call → tool call (e.g. `listProjects` / `getJob`)
+- The tool span shows input and output
+- Total duration is reasonable
 - No error spans
 
-### 6. Test fail-mode behavior
+### 7. Test fail-mode behavior
 
-Send another input that should NOT have an email:
-
-```
-Hi, I'm interested in your platform but I'm not ready to share contact info yet.
-```
-
-**Pass criteria:**
-- Response has `email: null`
-- Response has `name: null` (it's "I" but not a real name)
-- The validateEmail tool was NOT invoked (verify in trace)
-- This is the anti-hallucination behavior — agent refused to fabricate
-
-### 7. Test memory persistence
-
-Send a third message in the same thread:
+Send a request for an operation the agent has no tool for:
 
 ```
-Actually, my email is jane.doe@example.com — I forgot to include it earlier.
+Delete the project called "Old Draft".
 ```
 
 **Pass criteria:**
-- Agent's response uses jane.doe@example.com (memory carried context)
+- The agent does NOT fabricate a deletion or call an unrelated tool
+- It explains there is no delete tool available and (optionally) suggests what it can do instead
+- This is the anti-hallucination behavior — the agent refuses to invent capabilities
+
+### 8. Test memory persistence
+
+Send a follow-up in the same thread:
+
+```
+For that first project you listed, show me its details.
+```
+
+**Pass criteria:**
+- The agent calls `getProject` using the project from the earlier `listProjects` result (memory carried context)
 - Trace shows memory was loaded at the start of the run
-- Database side: confirm memory persisted to Supabase Postgres (if you can quickly check, optional)
+- Database side: confirm memory persisted to Supabase Postgres (optional, if quick)
 
-### 8. Send a request via cURL while Studio is running
+> Note: resource-scoped working memory only persists across separate conversations when the caller passes `memory: { thread, resource }`. In Studio, the thread is managed for you; cross-thread persistence per user is exercised via the REST contract documented in `README.md`.
+
+### 9. Send a request via cURL while Studio is running
 
 In a separate terminal:
 
 ```bash
-curl -X POST http://localhost:4111/api/agents/leadIntake/generate ^
+curl -X POST http://localhost:4111/api/agents/descript/generate ^
   -H "Content-Type: application/json" ^
-  -d "{\"messages\":[{\"role\":\"user\",\"content\":\"URGENT - production down\"}]}"
+  -d "{\"messages\":[{\"role\":\"user\",\"content\":\"List my recent jobs\"}]}"
 ```
 
 (Use `^` for line continuation on Windows cmd, or backslashes in Git Bash / PowerShell.)
 
 **Pass criteria:**
 - HTTP 200 response
-- Response includes `urgency: "high"`, `intent: "support"`
+- The `listJobs` tool was invoked
 - The request shows up as a NEW trace in Studio (live updating)
 
 ## What to capture in PROGRESS.md
@@ -117,7 +132,7 @@ curl -X POST http://localhost:4111/api/agents/leadIntake/generate ^
 ```
 ## Polish 01: Manual Studio Test
 - Status: complete | blocked
-- Steps 1-8: <pass/fail for each>
+- Steps 1-9: <pass/fail for each>
 - Notes: <any quirks observed; e.g. "trace took 12s to populate", "tool list rendered as JSON not pretty">
 - Issues to fix: <list, or "none">
 ```

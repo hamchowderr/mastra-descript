@@ -8,7 +8,7 @@ The base template build is functionally complete (12 phases done, 11/12 automate
 2. **`01-manual-studio-test.md`** — Walk through Mastra Studio manually to verify the live UX (covers verification Test 4 from the original SPEC)
 3. **`02-github-publish.md`** — Push the repo to GitHub, configure CI secrets, verify CI runs green
 4. **`03-template-provisioning-test.md`** — The most important test: provision a NEW project from this template via `npx create-mastra --template`. If this fails, the whole template strategy fails.
-5. **`04-completeness-scorer-fix.md`** — Investigate and fix the borderline `completeness` score (0.364 vs 0.3 floor). Either calibrate properly or replace with a scorer that's meaningful for structured-extraction agents.
+5. **`04-completeness-scorer-fix.md`** — Not applicable to this template (inherited from base). Descript uses `toolCallAccuracy` + `answerRelevancy` scorers, not the base `completeness` scorer. The file explains why and what to calibrate instead.
 6. **`05-image-size-decision.md`** — Document the Docker image size trade-off in README so anyone forking this template understands why it's 676MB.
 
 ## Operating mode for this pass
@@ -27,7 +27,7 @@ The polish steps build on each other:
 01 (manual Studio test)  →  validates locally before publishing
 02 (GitHub publish)      →  required before provisioning test can run
 03 (provisioning test)   →  validates the actual product
-04 (completeness fix)    →  CAN happen any time; orthogonal
+04 (scorer review)       →  N/A for descript; skip (see file)
 05 (image size docs)     →  doc-only; do last
 ```
 

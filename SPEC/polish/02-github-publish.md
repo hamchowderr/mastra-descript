@@ -14,7 +14,7 @@ If `gh` isn't installed, install via winget: `winget install GitHub.cli`. Then `
 
 ### 1. Decide on the repo name and visibility
 
-The convention from the conversation: `your-org/template-mastra-base` where `your-org` is the owner's GitHub org or username. Check with the owner if you don't know which.
+The convention from the conversation: `your-org/template-mastra-descript` where `your-org` is the owner's GitHub org or username. Check with the owner if you don't know which.
 
 **Visibility**: PUBLIC. The template needs to be reachable by `npx create-mastra --template <slug>` from anywhere. Private repos work but require auth setup; public is simpler and matches the use case (templates are designed to be forked).
 
@@ -25,7 +25,7 @@ If the template contains nothing client-confidential — and it shouldn't, that'
 Before pushing, verify nothing sensitive is staged:
 
 ```bash
-cd C:\Users\HamCh\code\template-mastra-base
+cd C:\Users\HamCh\code\template-mastra-descript
 cat .gitignore
 git status
 ```
@@ -49,7 +49,7 @@ If you get "fatal: not a git repository" or there are no commits, initialize:
 ```bash
 git init
 git add .
-git commit -m "Initial commit: template-mastra-base from spec build"
+git commit -m "Initial commit: template-mastra-descript from spec build"
 ```
 
 If git is already initialized with commits, leave them alone.
@@ -60,7 +60,7 @@ Ask the owner for the org/username if you don't already know it. Once confirmed:
 
 ```bash
 # Replace <org> with the owner's GitHub username/org
-gh repo create <org>/template-mastra-base \
+gh repo create <org>/template-mastra-descript \
   --public \
   --source=. \
   --description "Foundation Mastra agent template — Supabase-backed, Postgres memory, AIMock-tested, Docker-deployable" \
@@ -83,21 +83,21 @@ openssl rand -hex 32
 Copy the output. Then set it as a secret:
 
 ```bash
-gh secret set CI_APP_SECRET --repo <org>/template-mastra-base
+gh secret set CI_APP_SECRET --repo <org>/template-mastra-descript
 # Paste the value when prompted
 ```
 
 Or set via the web UI: repo → Settings → Secrets and variables → Actions → New repository secret.
 
 **Pass criteria:**
-- `gh secret list --repo <org>/template-mastra-base` shows `CI_APP_SECRET`
+- `gh secret list --repo <org>/template-mastra-descript` shows `CI_APP_SECRET`
 
 ### 6. Trigger CI by pushing
 
 CI runs on `push` to main and on `pull_request`. The push from step 4 should have triggered it already. Check:
 
 ```bash
-gh run list --repo <org>/template-mastra-base --limit 3
+gh run list --repo <org>/template-mastra-descript --limit 3
 ```
 
 **Pass criteria:**
@@ -107,13 +107,13 @@ gh run list --repo <org>/template-mastra-base --limit 3
 If no run is shown, manually trigger:
 
 ```bash
-gh workflow run ci.yml --repo <org>/template-mastra-base
+gh workflow run ci.yml --repo <org>/template-mastra-descript
 ```
 
 ### 7. Wait for CI to complete
 
 ```bash
-gh run watch --repo <org>/template-mastra-base
+gh run watch --repo <org>/template-mastra-descript
 ```
 
 Or open the Actions tab in the GitHub UI.
@@ -157,7 +157,7 @@ This gives a stable reference point. When you later improve base, the children c
 ```
 ## Polish 02: GitHub Publish & CI
 - Status: complete | blocked
-- Repo URL: https://github.com/<org>/template-mastra-base
+- Repo URL: https://github.com/<org>/template-mastra-descript
 - CI runs:
   - typecheck: ✓ <duration>
   - build: ✓ <duration>

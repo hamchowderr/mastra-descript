@@ -60,6 +60,21 @@ curl -X POST http://localhost:4111/api/agents/descript/generate \
 
 For streaming responses, use `/stream` instead of `/generate`.
 
+#### Working memory (persist context per user)
+
+Agents have **working memory** enabled (resource-scoped — see `src/mastra/lib/memory.ts`). For it to persist across a user's conversations, pass `memory.resource` (a stable user ID) and `memory.thread` (the conversation ID) in the body:
+
+```bash
+curl -X POST http://localhost:4111/api/agents/descript/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages":[{"role":"user","content":"List all my Descript projects."}],
+    "memory":{"resource":"user-alice-456","thread":"conversation-123"}
+  }'
+```
+
+Without `memory.resource`, working memory falls back to thread-only (no cross-conversation persistence). Semantic recall is intentionally off. Storage uses the Mastra instance's Postgres (Supabase), which supports the `mastra_resources` table resource-scoping needs — no extra setup.
+
 ### A2A (Agent-to-Agent Protocol)
 
 ```bash

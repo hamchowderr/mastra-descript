@@ -24,6 +24,14 @@ The CLI does not have a `--skills` flag despite earlier documentation suggesting
 
 `--default` does NOT init git. `git init` manually after scaffolding.
 
+## Resource-scoped working memory silently no-ops without `resource`
+
+`createDefaultMemory()` enables working memory with `scope: 'resource'`. It only persists per user when the caller passes `memory: { thread, resource }` to `agent.generate()` / the REST body. Omit `resource` and it silently falls back to thread-only — no error, just no cross-conversation persistence. The REST contract is documented in `README.md`. Also note: resource-scoping requires a storage adapter with the `mastra_resources` table (Postgres/Supabase here — fine; bare LibSQL file mode does not).
+
+## Processors in `lib/` are agent processors, NOT the observability span processor
+
+`SensitiveDataFilter` in `index.ts` is a `spanOutputProcessors` entry — it scrubs observability traces, not agent I/O. The agent-level baseline lives in `lib/processors.ts` (`UnicodeNormalizer` + `TokenLimiter`). Don't conflate them. Also: these are not memory processors, so they don't suppress Mastra's auto-added `MessageHistory` / `WorkingMemory` processors (those still run).
+
 ## PostHog telemetry leaks errors in restricted networks
 
 Mastra's CLI (and possibly runtime) tries to send telemetry to PostHog. On networks that block this (corporate firewalls, sandboxed environments), the failure produces a noisy stack trace that looks like an error but isn't fatal.
