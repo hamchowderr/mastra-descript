@@ -8,35 +8,35 @@ Open a second terminal. With `mastra dev` running:
 
 ### REST endpoint
 ```bash
-curl -X POST http://localhost:4111/api/agents/leadIntake/generate \
+curl -X POST http://localhost:4111/api/agents/descript/generate \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hi, my name is Test User and I need help with billing"}]}'
+  -d '{"messages":[{"role":"user","content":"Show me all my Descript projects."}]}'
 ```
 
-**Pass**: HTTP 200, response contains structured lead data.
+**Pass**: HTTP 200, response reports the project list (the `listProjects` tool was invoked).
 
 ### A2A endpoint
 ```bash
-curl http://localhost:4111/a2a/leadIntake
+curl http://localhost:4111/a2a/descript
 ```
 
 **Pass**: returns JSON describing the agent. Mastra exposes A2A automatically at `/a2a/{agentId}` for every registered agent. If 404, document in PROGRESS.md and report — A2A may have moved in a recent Mastra release, in which case we update the standard.
 
 ### MCP endpoint
 ```bash
-curl -X POST http://localhost:4111/api/mcp/baseMcp/mcp \
+curl -X POST http://localhost:4111/api/mcp/descriptMcp/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 ```
 
-**Pass**: HTTP 200, JSON-RPC response listing tools. The `ask_leadIntake` tool must be in the list.
+**Pass**: HTTP 200, JSON-RPC response listing tools. The `ask_descript` tool must be in the list.
 
 ### Studio + Editor
 Open `http://localhost:4111` in a browser.
 
 **Pass**:
 - Studio UI loads
-- `leadIntake` visible in agent list
+- `descript` visible in agent list
 - Editor tab present on the agent
 - Can edit instructions, save a draft
 
@@ -54,9 +54,9 @@ This template's agents are reachable through four standard protocols. Once the d
 Direct HTTP calls. The fastest path for n8n, Make, VAPI, LiveKit, or any HTTP-aware system.
 
 \`\`\`bash
-curl -X POST http://localhost:4111/api/agents/leadIntake/generate \
+curl -X POST http://localhost:4111/api/agents/descript/generate \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hi, I need a quote"}]}'
+  -d '{"messages":[{"role":"user","content":"List all my Descript projects."}]}'
 \`\`\`
 
 For streaming responses, use `/stream` instead of `/generate`. Full OpenAPI spec at `/api/openapi.json`. Interactive docs at `/swagger-ui` (dev only).
@@ -67,22 +67,22 @@ Google's open standard for agent-to-agent communication. JSON-RPC over HTTP. Age
 
 \`\`\`bash
 # Get agent card
-curl http://localhost:4111/a2a/leadIntake
+curl http://localhost:4111/a2a/descript
 \`\`\`
 
 Use this when another agent (in CrewAI, LangGraph, ADK, or any A2A-compatible framework) needs to delegate work to this template's agent.
 
 ### MCP (Model Context Protocol)
 
-Anthropic's open standard for agent-tool integration. The template's MCPServer exposes every agent as a callable tool at `/api/mcp/baseMcp/mcp`.
+Anthropic's open standard for agent-tool integration. The template's MCPServer exposes every agent as a callable tool at `/api/mcp/descriptMcp/mcp`.
 
 To use from Claude Desktop, add to your `claude_desktop_config.json`:
 
 \`\`\`json
 {
   "mcpServers": {
-    "template-mastra-base": {
-      "url": "http://localhost:4111/api/mcp/baseMcp/mcp"
+    "template-mastra-descript": {
+      "url": "http://localhost:4111/api/mcp/descriptMcp/mcp"
     }
   }
 }

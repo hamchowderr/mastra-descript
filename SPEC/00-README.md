@@ -1,6 +1,6 @@
-# template-mastra-base — Build Spec
+# template-mastra-descript — Build Spec
 
-You (the AI coding agent) are completing this Mastra base template. The starting state is a clean `npx create-mastra@latest` scaffold with the weather example. Your job is to remove the example, layer in this template's conventions, and verify everything works.
+You (the AI coding agent) are completing this Mastra Descript template. The starting state is a fork of `template-mastra-base` (via degit). Your job is to strip base's lead-intake example, add the Descript HTTP client + tool wrappers + automation agent, and verify everything works.
 
 ## Read these spec files in order
 

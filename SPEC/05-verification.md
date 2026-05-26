@@ -56,24 +56,24 @@ npm run dev
 **Pass criteria**:
 - Mastra Studio loads at `http://localhost:4111`
 - Console shows pretty-printed Pino logs
-- `leadIntake` agent appears in Studio's agent list
+- `descript` agent appears in Studio's agent list
 - No errors in the console
 
 **Common failures**:
 - "Cannot find package" → typo in import or missing dep install
 - "Connection refused" on Supabase → wrong `SUPABASE_DB_URL` (use the *session pooler* string, not the direct connection)
+- Descript 401 → bad/expired `DESCRIPT_API_TOKEN`, or token scoped to a different Drive
 - Path alias error → confirm relative imports inside `src/mastra/`
 
 ### 4. Live agent smoke test (Studio)
 
-In Studio, chat with `leadIntake`. Paste:
+In Studio, chat with `descript` (real `DESCRIPT_API_TOKEN`). Paste:
 
-> Hi, this is John Smith from Acme Corp (john@acme.io). We need pricing for 50 seats by Friday.
+> Show me all my Descript projects.
 
 **Pass criteria**:
-- Agent returns a JSON response matching `LeadSchema`
-- Fields populated: name="John Smith", email="john@acme.io", company="Acme Corp", intent="pricing", urgency="high"
-- Trace view shows `validateEmail` tool was invoked
+- Trace view shows the `listProjects` tool was invoked
+- Agent returns the real project list from your Drive
 - No errors in console
 
 **Cost**: ~$0.01
@@ -83,19 +83,19 @@ In Studio, chat with `leadIntake`. Paste:
 In a new terminal (Mastra still running):
 
 ```bash
-curl -X POST http://localhost:4111/api/agents/leadIntake/generate \
+curl -X POST http://localhost:4111/api/agents/descript/generate \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{
       "role": "user",
-      "content": "URGENT - production down, losing money. Need help now."
+      "content": "What is the current status of job xyz789?"
     }]
   }'
 ```
 
 **Pass criteria**:
 - HTTP 200
-- Response includes structured output with `intent: "support"`, `urgency: "high"`
+- Trace shows the `getJob` tool was invoked; the response reports the job's `job_state` and `result.status`
 
 **Cost**: ~$0.01
 
@@ -116,16 +116,16 @@ npm run eval
 ```
 
 **Pass criteria**:
-- All 5 cases run
+- All 8 cases run
 - Each case prints case name, scorer scores, pass/fail
 - Aggregate summary at the end
 - Exit 0 (or 1 with clear reasons if a scorer is below threshold)
 
-**Cost**: ~$0.10 (5 cases × 3 LLM scorers each)
+**Cost**: ~$0.10 (8 cases × 2 LLM scorers each)
 
 If a scorer is consistently below threshold, either:
 - The threshold in the dataset JSON is too high (lower it)
-- The scorer prompt needs refinement (look at the `urgencyScorer` analyze prompt)
+- The scorer prompt needs refinement (look at the `toolCallAccuracyScorer` analyze prompt)
 - The agent's instructions need refinement
 
 ### 8. CI eval gate (AIMock)
@@ -167,10 +167,10 @@ npm run build
 ### 10. Docker build
 
 ```bash
-docker build -t template-mastra-base:test .
+docker build -t template-mastra-descript:test .
 ```
 
-**Pass**: build succeeds. Image size < 400MB ideally (`docker images template-mastra-base:test`).
+**Pass**: build succeeds. Image size < 400MB ideally (`docker images template-mastra-descript:test`).
 
 ### 11. Docker run
 
@@ -203,11 +203,11 @@ For each test that fails, write a clear note in `PROGRESS.md`:
 ## Verification failures
 
 ### Test 7: CI eval gate (live)
-- Failed scorer: `urgency`
-- Expected ≥ 0.8, got 0.6
-- Cause: cases include "no rush" which the agent interprets as medium, not low
-- Fix: refined the urgencyScorer judge prompt to be more lenient with "no rush" → "low"
-- New result: 0.85 ✓
+- Failed scorer: `toolCallAccuracy`
+- Expected ≥ 0.85, got 0.75
+- Cause: the "cancel a job" case (no matching tool) — the agent called `getJob` instead of declining
+- Fix: tightened the agent instructions to state there is no cancel tool; refined the judge prompt
+- New result: 0.88 ✓
 ```
 
 Document successful runs too — gives the owner confidence.

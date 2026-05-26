@@ -5,7 +5,7 @@ This is the most important polish step. Everything we've built is for nothing if
 ## What this proves
 
 The owner's business model is:
-1. Build template-mastra-base
+1. Build template-mastra-descript
 2. When a client signs, run a provisioning command that scaffolds a project from the template
 3. Customize for the client, ship
 
@@ -28,7 +28,7 @@ This is the actual command the owner will run for new clients:
 
 ```bash
 npx create-mastra@latest test-client-001 \
-  --template <org>/template-mastra-base \
+  --template <org>/template-mastra-descript \
   --default \
   --llm anthropic \
   --llm-api-key dummy-replace-me \
@@ -80,7 +80,7 @@ Fill in `.env` with the SAME values the base template uses (it's a test, not a r
 The owner can copy from the original `.env` for speed:
 
 ```bash
-cp C:\Users\HamCh\code\template-mastra-base\.env .env
+cp C:\Users\HamCh\code\template-mastra-descript\.env .env
 # Then edit APP_SECRET to a new random value
 ```
 
@@ -93,8 +93,8 @@ npm run dev
 
 **Pass criteria:**
 - Mastra Studio loads at http://localhost:4111
-- `leadIntake` agent is visible
-- A canonical input returns valid output (same as Polish 01 step 4)
+- `descript` agent is visible
+- A read-only request returns valid output (same as Polish 01 step 4 — "Show me all my Descript projects.")
 
 ### 6. Run typecheck and eval
 
@@ -116,13 +116,14 @@ cp src/mastra/agents/_example.ts src/mastra/agents/test-agent.ts
 ```
 
 Edit `src/mastra/agents/test-agent.ts`:
-- Change `id: 'leadIntake'` → `id: 'testAgent'`
-- Change `name: 'Lead Intake'` → `name: 'Test Agent'`
-- Remove the scorer registrations (so we don't need to also add scorer file)
+- Rename the export `descriptAgent` → `testAgent`
+- Change `id: 'descript'` → `id: 'testAgent'`
+- Change `name: 'Descript'` → `name: 'Test Agent'`
+- Keep `memory: createDefaultMemory()` + the shared processors (they come from `lib/`, no extra files needed)
 
 Edit `src/mastra/index.ts`:
-- Add: `import { leadIntakeAgent as testAgent } from './agents/test-agent';` (or rename the export and import properly)
-- Wait — easier: just don't import scorers in test-agent.ts, and import the agent properly
+- Add: `import { testAgent } from './agents/test-agent';`
+- Register it in the `agents` field of the Mastra constructor (and optionally the MCP server)
 
 (Use your judgement on the cleanest minimal addition. The point is to verify "I can extend this template without rewriting it.")
 
@@ -133,7 +134,7 @@ npm run dev
 
 **Pass criteria:**
 - typecheck still passes
-- Studio shows BOTH `leadIntake` and `testAgent`
+- Studio shows BOTH `descript` and `testAgent`
 - New agent responds to messages
 
 ### 8. Clean up

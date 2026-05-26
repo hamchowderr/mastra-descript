@@ -12,7 +12,7 @@ Every template in this family ships with:
 
 These are not optional. Any template missing them is incomplete and must be brought to standard before being considered production-ready.
 
-This polish brings `template-mastra-base` to standard at `https://github.com/hamchowderr/template-mastra-base`.
+This polish brings `template-mastra-descript` to standard at `https://github.com/hamchowderr/template-mastra-descript`.
 
 ## Read these files in order
 

@@ -7,7 +7,7 @@ Install the two packages this polish needs, then add the editor storage domain.
 Both packages are required. The base template currently has neither.
 
 ```bash
-cd C:\Users\HamCh\code\template-mastra-base
+cd C:\Users\HamCh\code\template-mastra-descript
 npm install @mastra/editor @mastra/mcp
 ```
 

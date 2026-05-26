@@ -252,6 +252,90 @@ export function getSupabaseForUser(accessToken: string): SupabaseClient {
 
 ---
 
+## `src/mastra/lib/processors.ts`
+
+**Purpose**: One shared input/output processor baseline every agent spreads in, so the whole fleet has the same safety/hygiene layer instead of each agent reinventing it.
+
+**Design rule (do not relitigate)**: only the two **deterministic, no-LLM** processors are active by default — `UnicodeNormalizer` (input) and `TokenLimiter` (output). The five model-backed safety processors (`ModerationProcessor`, `PromptInjectionDetector`, `PIIDetector`, `LanguageDetector`, `SystemPromptScrubber`) each construct their own agent and make their own LLM call; enabling all of them turns one request into ~6 sequential LLM calls. They — plus behavior-changing ones (`ToolCallFilter`, `StructuredOutputProcessor`, `BatchPartsProcessor`) — ship **present-but-commented** as opt-in, with a one-line rationale each. Do not enable them by default.
+
+**Implementation**:
+
+```typescript
+import type { InputProcessorOrWorkflow, OutputProcessorOrWorkflow } from '@mastra/core/processors';
+import { UnicodeNormalizer, TokenLimiter } from '@mastra/core/processors';
+
+export const DEFAULT_OUTPUT_TOKEN_LIMIT = 8000;
+
+export const defaultInputProcessors: InputProcessorOrWorkflow[] = [
+  new UnicodeNormalizer({ stripControlChars: true, collapseWhitespace: true }),
+  // OPT-IN (each = one extra LLM call), uncomment + add a model to enable:
+  // new PromptInjectionDetector({ model: 'anthropic/claude-haiku-4-5' }),
+  // new ModerationProcessor({ model: 'anthropic/claude-haiku-4-5' }),
+  // new PIIDetector({ model: 'anthropic/claude-haiku-4-5', strategy: 'redact' }),
+];
+
+export const defaultOutputProcessors: OutputProcessorOrWorkflow[] = [
+  new TokenLimiter({ limit: DEFAULT_OUTPUT_TOKEN_LIMIT, strategy: 'truncate' }),
+  // OPT-IN:
+  // new SystemPromptScrubber({ model: 'anthropic/claude-haiku-4-5' }),
+  // new ToolCallFilter({ exclude: [] }),
+];
+```
+
+(See the actual file for the full commented opt-in list and the file-header rationale.)
+
+**Acceptance criteria**:
+- Typecheck passes; both arrays export with the correct `InputProcessorOrWorkflow[]` / `OutputProcessorOrWorkflow[]` types.
+- Only `UnicodeNormalizer` and `TokenLimiter` are active; everything else is commented.
+- These are NOT memory processors — adding them does not suppress Mastra's auto-added `MessageHistory` / `WorkingMemory` processors.
+
+---
+
+## `src/mastra/lib/memory.ts`
+
+**Purpose**: One shared `Memory` factory so every agent that has memory uses the same policy.
+
+**Design rule (do not relitigate)**: working memory **ON**, `scope: 'resource'` (persists per user across threads). Semantic recall **OFF** — it adds an embed + vector-query per turn and needs a `vector` store + `embedder` this template doesn't configure. Pass no `storage` — Memory inherits the Mastra instance's `PostgresStore` (Supabase), which supports the `mastra_resources` table resource-scoping requires.
+
+**Implementation**:
+
+```typescript
+import { Memory } from '@mastra/memory';
+
+export const DEFAULT_WORKING_MEMORY_TEMPLATE = `# User Profile
+
+## Identity
+- Name:
+- Role / Company:
+
+## Preferences
+- Communication style: [e.g., concise, detailed]
+- Constraints / things to avoid:
+
+## Session State
+- Current goal:
+- Open items:
+`;
+
+export function createDefaultMemory(
+  template: string = DEFAULT_WORKING_MEMORY_TEMPLATE,
+): Memory {
+  return new Memory({
+    options: {
+      workingMemory: { enabled: true, scope: 'resource', template },
+      // semanticRecall: intentionally off
+    },
+  });
+}
+```
+
+**Acceptance criteria**:
+- Typecheck passes.
+- Agents use `memory: createDefaultMemory()` (NOT bare `new Memory()`).
+- Working memory only persists per user when the caller passes `memory: { thread, resource }` — document this contract in `README.md`.
+
+---
+
 ## `src/mastra/index.ts`
 
 **Purpose**: Mastra entry point. Strict boot order; replaces the scaffolded version.
@@ -260,296 +344,179 @@ export function getSupabaseForUser(accessToken: string): SupabaseClient {
 
 **Acceptance criteria**:
 - `npm run dev` starts Mastra Studio at `localhost:4111` without errors.
-- Studio shows the `leadIntake` agent registered.
+- Studio shows the `descript` agent registered.
 - Boot order validated: a misconfigured `.env` crashes before any LLM provider client is constructed.
 - `console.log` shows pretty-printed Pino output in dev (`LOG_LEVEL=debug`).
 
 ---
 
-## `src/mastra/agents/_example.ts`
+## `src/mastra/lib/descript-client.ts`
 
-**Purpose**: Canonical lead-intake agent. Demonstrates every convention. New agents copy this file as a starting template.
+**Purpose**: One typed HTTP client for the Descript API. Every tool wrapper goes through it so auth, retry, timeout, and async job polling live in exactly one place.
 
 **Behavior**:
-- Takes unstructured text (email body, voice transcript, form submission).
-- Returns `LeadSchema`-shaped structured output.
-- Uses one inline tool (`validateEmail`).
-- Registers three scorers with continuous sampling.
+- `class DescriptClient` — constructed from env (`DESCRIPT_API_TOKEN`, `DESCRIPT_BASE_URL`, timeout/retry/poll settings), overridable per-instance.
+- Bearer auth on every request; retries 5xx + network errors (`DESCRIPT_RETRIES`); per-request timeout (`DESCRIPT_TIMEOUT_MS`).
+- `pollJob(jobId)` — polls a job every `DESCRIPT_POLL_INTERVAL_MS` up to `DESCRIPT_POLL_MAX_ATTEMPTS`, returning the completed `DescriptJob` or throwing a clear timeout error.
+- Surfaces Descript's two-field job status: top-level `job_state` ("running" | "stopped") and nested `result.status` ("success" | "partial" | "failed").
+
+**Implementation guidance**: see the shipped `src/mastra/lib/descript-client.ts` for the exact methods and types — it is the source of truth. Don't reinvent fetch/retry logic in the tools; call this client.
+
+**Acceptance criteria**:
+- Typecheck passes.
+- All tool wrappers import and use `DescriptClient` (no raw `fetch` in the tools).
+- A bad/missing token surfaces a clear error (and, with `DESCRIPT_HEALTHCHECK_ON_BOOT=true`, fails fast at startup).
+
+---
+
+## `src/mastra/tools/*.ts`
+
+**Purpose**: Typed Mastra tool wrappers — the surface the agent calls. Seven tools across five files. Each wraps a `DescriptClient` call and (for async operations) polls to completion so a single tool call is a complete operation.
+
+| File | Tool(s) | What it does |
+|---|---|---|
+| `import-media.ts` | `importMedia` | Import media from a public URL into a (new or named) project → returns `project_id` |
+| `agent-edit.ts` | `agentEdit` | Run an AI edit on a project via Underlord from a natural-language prompt (can also create a project from a prompt alone) |
+| `publish.ts` | `publish` | Render + publish a composition to a shareable/downloadable link → returns `share_url` |
+| `projects.ts` | `listProjects`, `getProject` | List projects (optional name filter) / fetch one project's details |
+| `jobs.ts` | `getJob`, `listJobs` | Poll a single job by id / list recent jobs |
+
+**Implementation guidance**: see the shipped tool files for exact input/output Zod schemas. Mutating tools (`importMedia`, `agentEdit`, `publish`) return only after the underlying job finishes (the client polls). Tools return both `job_state` and `result.status` so the agent never misreports a "partial" result as success.
+
+**Acceptance criteria**:
+- Typecheck passes; all seven tools export and register on the agent.
+- Mutating tools do not return until the job reaches a terminal state.
+- A failed job is surfaced with its error message; the tool does not auto-retry a `failed` result.
+
+---
+
+## `src/mastra/agents/_example.ts`
+
+**Purpose**: Canonical Descript automation agent. Demonstrates the conventions for this template (multi-tool orchestration over an async API). New agents copy this file as a starting template.
+
+**Behavior**:
+- Orchestrates the Descript import → edit → publish pipeline plus project/job inspection via its seven tools.
+- Free-text conversational output (NOT structured output) — it reports job progress and result URLs.
+- Uses `createDefaultMemory()` + the shared processors; registers the two scorers with continuous sampling.
 
 **Implementation**:
 
 ```typescript
 import { Agent } from '@mastra/core/agent';
-import { createTool } from '@mastra/core/tools';
-import { Memory } from '@mastra/memory';
-import { z } from 'zod';
+import { importMedia } from '../tools/import-media';
+import { agentEdit } from '../tools/agent-edit';
+import { publish } from '../tools/publish';
+import { listProjects, getProject } from '../tools/projects';
+import { getJob, listJobs } from '../tools/jobs';
+import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
+import { createDefaultMemory } from '../lib/memory';
 
-import {
-  hallucinationScorer,
-  completenessScorer,
-  urgencyScorer,
-} from '../scorers/_example.scorers';
+export const descriptAgent = new Agent({
+  id: 'descript',
+  name: 'Descript',
+  description:
+    'Automates Descript video and audio editing workflows via natural language. Imports media from URLs, runs AI edits via Underlord, publishes shareable links, and manages projects and jobs.',
+  model: 'anthropic/claude-sonnet-4-6',
+  instructions: `You are an automation agent for Descript, a video and audio editing platform with an AI editor called Underlord.
 
-/**
- * # Lead Intake Agent (canonical example)
- *
- * What it does:
- *   Takes unstructured text (email body, voice transcript, form submission)
- *   and returns structured lead data validated against LeadSchema.
- *
- * Who calls it:
- *   - n8n / Make webhook
- *   - Next.js API route
- *   - VAPI/LiveKit tool callback
- *   Endpoint: POST /api/agents/leadIntake/generate
- *
- * Env vars required:
- *   - ANTHROPIC_API_KEY (default model)
- *
- * How to test:
- *   curl -X POST http://localhost:4111/api/agents/leadIntake/generate \
- *     -H "Content-Type: application/json" \
- *     -d '{
- *       "messages": [{
- *         "role": "user",
- *         "content": "Hi, this is John from Acme Corp (john@acme.io). We need pricing for 50 seats by Friday."
- *       }]
- *     }'
- *
- * Copy this file, rename, and adapt for new agents.
- */
+You can:
+- Import media from a public URL into a project (importMedia)
+- Edit a project with a natural language prompt (agentEdit) — this is Underlord doing the actual editing
+- Publish a composition to a shareable + downloadable link (publish)
+- List and inspect projects (listProjects, getProject)
+- Check job status (getJob, listJobs)
 
-export const LeadSchema = z.object({
-  name: z.string().nullable().describe('Full name of the lead, or null if not found'),
-  email: z.string().email().nullable().describe('Email address, or null'),
-  company: z.string().nullable().describe('Company name, or null'),
-  intent: z
-    .enum(['demo', 'pricing', 'support', 'partnership', 'other'])
-    .describe('What the lead wants'),
-  urgency: z.enum(['low', 'medium', 'high']).describe('Tone-based urgency'),
-  notes: z.string().describe('One-sentence summary of context'),
-});
+How Descript works:
+- All mutations (import, edit, publish) are async. They return a job_id and you poll until the job completes.
+- The tools handle polling automatically — they don't return until the underlying job is done.
+- A job has TWO status fields: top-level job_state ("running" | "stopped") and nested result.status ("success" | "partial" | "failed"). Tools return both as separate fields.
+- If a job fails, report the error clearly. Do not retry automatically.
 
-export type Lead = z.infer<typeof LeadSchema>;
-
-const validateEmail = createTool({
-  id: 'validateEmail',
-  description: 'Validate and normalize an email address',
-  inputSchema: z.object({ email: z.string() }),
-  outputSchema: z.object({
-    valid: z.boolean(),
-    normalized: z.string().nullable(),
-    reason: z.string().nullable(),
-  }),
-  execute: async ({ context }) => {
-    const result = z.string().email().safeParse(context.email.trim().toLowerCase());
-    if (!result.success) {
-      return {
-        valid: false,
-        normalized: null,
-        reason: result.error.issues[0]?.message ?? 'Invalid email format',
-      };
-    }
-    return { valid: true, normalized: result.data, reason: null };
-  },
-});
-
-export const leadIntakeAgent = new Agent({
-  id: 'leadIntake',
-  name: 'Lead Intake',
-  instructions: `You extract structured lead information from unstructured text.
-
-Inputs may be email bodies, voice transcripts, or form submissions.
+Common workflows: import + edit + publish; edit existing project; new project from prompt only.
 
 Rules:
-- If a field is not present, return null. Never guess or fabricate.
-- When you find an email address, call validateEmail to confirm it parses cleanly.
-- The notes field is one short sentence summarizing what the lead actually wants.
-- Urgency reflects tone: explicit deadlines or frustration → high; "would love to learn more" → low; default → medium.
-
-Return only the structured output — no preamble, no commentary.`,
-  model: 'anthropic/claude-sonnet-4-6',
-  tools: { validateEmail },
-  memory: new Memory(),
-  scorers: {
-    hallucination: {
-      scorer: hallucinationScorer,
-      sampling: { type: 'ratio', rate: 1 },
-    },
-    completeness: {
-      scorer: completenessScorer,
-      sampling: { type: 'ratio', rate: 1 },
-    },
-    urgency: {
-      scorer: urgencyScorer,
-      sampling: { type: 'ratio', rate: 1 },
-    },
-  },
+- Never fabricate job results. The tools return the real job status — trust them.
+- When chaining import → edit, wait for importMedia to complete ("success") before calling agentEdit.
+- If status is "partial", surface that to the user.
+- For publish, default to Video at 1080p unless the user specifies otherwise.
+- If a tool returns "failed" with an error message, summarize it without retrying.`,
+  tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs },
+  memory: createDefaultMemory(),
+  // Shared safety/hygiene baseline — see src/mastra/lib/processors.ts.
+  inputProcessors: defaultInputProcessors,
+  outputProcessors: defaultOutputProcessors,
 });
 ```
 
 **Acceptance criteria**:
 - Agent registers without errors.
-- Live smoke test (real Anthropic key) returns valid `LeadSchema` output for the canonical input.
+- Live smoke test (real Descript token): a request like "list my projects" invokes `listProjects` and returns real data.
 - Studio shows the agent and lets you chat with it.
-- The `validateEmail` tool is invoked when an email is present in input.
+- A pipeline request (import → edit → publish) chains the tools in order and waits for each job.
 
 ---
 
 ## `src/mastra/scorers/_example.scorers.ts`
 
-**Purpose**: Three scorers for the lead-intake agent. Two prebuilt, one custom.
+**Purpose**: Two scorers for the Descript agent — one custom (tool selection), one prebuilt (answer relevancy).
 
 **Behavior**:
-- `hallucinationScorer`: prebuilt LLM-judged scorer that detects fabricated content
-- `completenessScorer`: prebuilt code-based scorer; checks if output covers the input requirements
-- `urgencyScorer`: custom scorer (built with `createScorer`) that asserts urgency was inferred correctly
+- `toolCallAccuracyScorer`: custom `createScorer` (type `agent`) whose LLM judge checks the agent called the correct Descript tool for the request (or no tool when none applies, e.g. "cancel a job" — there is no cancel tool).
+- `answerRelevancyScorer`: prebuilt `createPromptAlignmentScorerLLM` — the response should align with the agent's instructions.
 
-**Implementation guidance**:
-- Look up the exact API for `createHallucinationScorer` in `node_modules/@mastra/evals/dist/scorers/llm/hallucination/index.d.ts` before writing — the signature may have specific options.
-- Same for `createCompletenessScorer` in `node_modules/@mastra/evals/dist/scorers/code/completeness/index.d.ts`.
-- For the custom `urgencyScorer`, use `createScorer` from `@mastra/core/evals` with `.preprocess() → .analyze() → .generateScore() → .generateReason()` chain. Reference `src/mastra/scorers/weather-scorer.ts` from the original scaffold (before deletion) for the pattern. *(Note: it was deleted in build order — if you need the reference, recover from git or re-scaffold a throwaway project to inspect.)*
-
-**Sketch** (verify against actual package types before finalizing):
+**Implementation guidance**: see the shipped `src/mastra/scorers/_example.scorers.ts` for the exact judge prompt and chain. Pattern: `createScorer({...}).preprocess() → .analyze() → .generateScore() → .generateReason()`; the analyze step returns `{ expectedTool, calledTool, match, explanation }` and score is `match ? 1 : 0`.
 
 ```typescript
-import { createHallucinationScorer } from '@mastra/evals/scorers/llm';
-import { createCompletenessScorer } from '@mastra/evals/scorers/code';
+import { createPromptAlignmentScorerLLM } from '@mastra/evals/scorers/prebuilt';
 import { createScorer } from '@mastra/core/evals';
 import { getUserMessageFromRunInput, getAssistantMessageFromRunOutput } from '@mastra/evals/scorers/utils';
 import { z } from 'zod';
 
-export const hallucinationScorer = createHallucinationScorer({
-  model: 'anthropic/claude-sonnet-4-6',
-  // ... refer to actual prebuilt scorer signature
-});
-
-export const completenessScorer = createCompletenessScorer();
-
-export const urgencyScorer = createScorer({
-  id: 'lead-urgency-scorer',
-  name: 'Lead Urgency',
-  description: 'Verifies the agent inferred urgency level correctly from tone',
+export const toolCallAccuracyScorer = createScorer({
+  id: 'descript-tool-call-accuracy',
+  name: 'Tool Call Accuracy',
+  description: 'Verifies the agent called the correct Descript tool for the given request',
   type: 'agent',
-  judge: {
-    model: 'anthropic/claude-sonnet-4-6',
-    instructions:
-      'You evaluate whether an AI agent correctly inferred urgency from the tone of a lead message. ' +
-      'High urgency = explicit deadline, frustration, "URGENT", "production down", "now", etc. ' +
-      'Low urgency = casual phrasing, "no rush", "curious", exploratory tone. ' +
-      'Medium = default; neither explicit urgency nor explicit casual.',
-  },
+  judge: { model: 'anthropic/claude-sonnet-4-6', instructions: '...see shipped file...' },
 })
-  .preprocess(({ run }) => {
-    const userText = getUserMessageFromRunInput(run.input) || '';
-    const assistantText = getAssistantMessageFromRunOutput(run.output) || '';
-    return { userText, assistantText };
-  })
-  .analyze({
-    description: 'Determine if urgency in output matches urgency in input tone',
-    outputSchema: z.object({
-      expectedUrgency: z.enum(['low', 'medium', 'high']),
-      reportedUrgency: z.enum(['low', 'medium', 'high']),
-      match: z.boolean(),
-      explanation: z.string(),
-    }),
-    createPrompt: ({ results }) => `
-Evaluate urgency inference.
+  .preprocess(/* extract user + assistant text */)
+  .analyze(/* outputSchema: { expectedTool, calledTool, match, explanation } */)
+  .generateScore(({ results }) => (results.analyzeStepResult?.match ? 1 : 0))
+  .generateReason(/* ... */);
 
-User message:
-"""
-${results.preprocessStepResult.userText}
-"""
-
-Agent response (JSON):
-"""
-${results.preprocessStepResult.assistantText}
-"""
-
-Tasks:
-1. Determine the correct urgency from the user's tone.
-2. Extract what urgency the agent reported (look for "urgency": "..." in the JSON).
-3. Set match=true only if they agree.
-
-Return JSON: { expectedUrgency, reportedUrgency, match, explanation }
-`,
-  })
-  .generateScore(({ results }) => {
-    const r = (results as { analyzeStepResult?: { match?: boolean } }).analyzeStepResult;
-    return r?.match ? 1 : 0;
-  })
-  .generateReason(({ results, score }) => {
-    const r = (results as { analyzeStepResult?: { expectedUrgency?: string; reportedUrgency?: string; explanation?: string } }).analyzeStepResult ?? {};
-    return `Expected: ${r.expectedUrgency ?? '?'}, Reported: ${r.reportedUrgency ?? '?'}. Score=${score}. ${r.explanation ?? ''}`;
-  });
+export const answerRelevancyScorer = createPromptAlignmentScorerLLM({
+  model: 'anthropic/claude-sonnet-4-6',
+});
 ```
 
 **Acceptance criteria**:
 - Typecheck passes.
-- All three scorers exportable.
-- Each can be passed to an agent's `scorers` config.
+- Both scorers exportable and registerable on an agent's `scorers` config.
 
 ---
 
 ## `src/mastra/scorers/datasets/_example.json`
 
-**Purpose**: Canonical inputs + expected behavior for offline CI gate. The eval runner loads this, invokes the agent on each input, applies scorers, and asserts thresholds.
+**Purpose**: Canonical Descript requests + the tool each should trigger, for the offline CI gate. The eval runner loads this, invokes the agent on each input, applies scorers, and asserts thresholds.
 
 **Schema**:
 
 ```json
 {
-  "agentId": "leadIntake",
+  "agentId": "descript",
   "thresholds": {
-    "hallucination": 0.85,
-    "completeness": 0.7,
-    "urgency": 0.8
+    "toolCallAccuracy": 0.85,
+    "answerRelevancy": 0.80
   },
   "cases": [
-    {
-      "name": "extracts all fields from clean intro",
-      "input": "Hi, this is John Smith from Acme Corp (john@acme.io). We need pricing for 50 seats by Friday.",
-      "expectedFields": {
-        "name": "John Smith",
-        "email": "john@acme.io",
-        "company": "Acme Corp",
-        "intent": "pricing",
-        "urgency": "high"
-      }
-    },
-    {
-      "name": "returns null for missing fields",
-      "input": "Looking for a demo of your platform.",
-      "expectedFields": {
-        "name": null,
-        "email": null,
-        "company": null,
-        "intent": "demo"
-      }
-    },
-    {
-      "name": "detects high urgency from frustration",
-      "input": "URGENT — production is down and we're losing money. Need help now.",
-      "expectedFields": {
-        "intent": "support",
-        "urgency": "high"
-      }
-    },
-    {
-      "name": "low urgency for casual tone",
-      "input": "Hey, just curious about partnership opportunities. No rush.",
-      "expectedFields": {
-        "intent": "partnership",
-        "urgency": "low"
-      }
-    },
-    {
-      "name": "anti-hallucination: never fabricates missing email",
-      "input": "Hi, I am Jane and I want a demo.",
-      "expectedFields": {
-        "email": null
-      }
-    }
+    { "name": "list all projects", "input": "Show me all my Descript projects.", "expectedTool": "listProjects" },
+    { "name": "get specific project details", "input": "Show details for project ID abc123.", "expectedTool": "getProject" },
+    { "name": "import media from url", "input": "Import this video into a new project called Demo Reel: https://example.com/video.mp4", "expectedTool": "importMedia" },
+    { "name": "edit project with ai prompt", "input": "Edit project abc123 to remove all filler words using Underlord.", "expectedTool": "agentEdit" },
+    { "name": "publish video", "input": "Publish project abc123 as a 1080p video and give me the share link.", "expectedTool": "publish" },
+    { "name": "check job status", "input": "What is the current status of job xyz789?", "expectedTool": "getJob" },
+    { "name": "list recent jobs", "input": "Show me the most recent jobs in my account.", "expectedTool": "listJobs" },
+    { "name": "cancel job - no tool available", "input": "Cancel job abc123 immediately.", "expectedTool": null }
   ]
 }
 ```
@@ -557,7 +524,7 @@ Return JSON: { expectedUrgency, reportedUrgency, match, explanation }
 **Acceptance criteria**:
 - Valid JSON, lints clean.
 - Eval runner consumes it without schema errors.
-- 5 cases minimum; at least 1 anti-hallucination case.
+- One case per tool, plus a negative case where `expectedTool` is `null` (no matching tool exists).
 
 ---
 
@@ -568,8 +535,8 @@ Return JSON: { expectedUrgency, reportedUrgency, match, explanation }
 **Behavior**:
 - Reads dataset JSON from `src/mastra/scorers/datasets/_example.json` (or accepts a path arg).
 - Loads `mastra` from `src/mastra/index.ts`.
-- For each case: invokes `mastra.getAgent(agentId).generate(input, { structuredOutput: { schema: LeadSchema } })`.
-- Validates structured output against `expectedFields` (deep partial equality).
+- For each case: invokes `mastra.getAgent(agentId).generate(input)` and inspects which tool the agent called.
+- Compares the called tool against the case's `expectedTool` (or asserts no tool call when `expectedTool` is `null`).
 - Aggregates per-scorer averages — note that the scorers attached to the agent run automatically; the runner observes those scores from the agent's run output (or runs them manually if direct programmatic access isn't simple).
 - Compares averages against thresholds.
 - Prints a colored summary; exits 0 if all thresholds met, 1 otherwise.

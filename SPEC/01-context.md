@@ -2,58 +2,61 @@
 
 ## What this template is
 
-`template-mastra-base` is the foundation template for a family of Mastra agent project templates owned by Otaku Solutions. It's the **lean base** — the children (`template-mastra-rag`, `template-mastra-voice`, `template-mastra-chat`, `template-mastra-nca`) fork from this and add category-specific functionality.
+`template-mastra-descript` is the Descript automation child template in Otaku Solutions' Mastra template family. It forks from `template-mastra-base` and adds:
 
-Every fork inherits: env loader, AIMock support, structured logging, Docker setup, scorer + eval harness, agent conventions, prompts folder for AI coding agents.
+- Typed Mastra tool wrappers around the Descript API (import, AI edit via Underlord, publish, project + job inspection)
+- An example automation agent that uses the wrappers to run end-to-end Descript workflows
+- A reusable HTTP client helper for the Descript API (auth, retry, timeout, async job polling)
 
-## Owner's working model
+## Relationship to base
 
-- **Build → educate → consult → resell.** The owner builds for themselves first, then delivers to clients. Templates must be reusable across many client projects with minimal adaptation.
-- **Multi-client, multi-VPS.** Each client gets their own Mastra deployment, often on a small VPS (Hetzner / DO / similar). This template targets that deployment shape.
-- **Supabase-first.** Postgres for state, pgvector for RAG, signed URLs for file ops. Avoid alternative DBs unless a client specifically requires it.
+| Layer | Source |
+|---|---|
+| Env loader (`src/lib/env.ts`) | Inherited, extended with Descript vars |
+| AIMock provider switch | Inherited, unchanged |
+| Supabase client factory | Inherited, unchanged |
+| Mastra entry (`src/mastra/index.ts`) | Inherited, agent registration updated |
+| Composite store, memory, observability | Inherited, unchanged |
+| Memory baseline (`lib/memory.ts`), processor baseline (`lib/processors.ts`) | Inherited, unchanged |
+| Docker, CI | Inherited |
+| Lead-intake agent | **Removed** — replaced by the Descript automation agent |
+| Lead-intake scorers | **Removed** — replaced by tool-call accuracy + answer relevancy |
+| Descript HTTP client | **New** |
+| Descript tool wrappers (7 tools across 5 files) | **New** |
+| Descript automation agent | **New** |
 
-## Decisions already made (do not relitigate)
+## Scope decisions (do not relitigate)
 
-| Decision | What | Why |
+| Decision | Choice | Why |
 |---|---|---|
-| Storage adapter | `@mastra/pg` for default domain, DuckDB for observability domain (default scaffold pattern) | Multi-container safe; matches Mastra's recommended composite store; pgvector ready for RAG fork |
-| Logger | `PinoLogger` from `@mastra/loggers` | Mastra's official wrapper; integrates with Studio + observability |
-| Observability | `Observability` from `@mastra/observability` with `DefaultExporter` only | Streams to Mastra Studio. Sentry / Braintrust / Langfuse can be added later as custom exporters. |
-| Scorer philosophy | **Hybrid**: continuous (sampling on real traffic) + CI gate (offline runner against canonical dataset) | Catches drift in production AND blocks regressions before merge |
-| Default LLM | `anthropic/claude-sonnet-4-6` | Owner default; all three providers' keys go in env so child agents can choose |
-| LLM mocking | `@copilotkit/aimock` for deterministic tests | Free, fast, deterministic CI runs |
-| Voice provider (for the future voice template, not here) | `@mastra/voice-google-gemini-live` | Gemini Live STS; uses owner's existing Google API key |
-| Deployment | Docker + docker-compose | Process supervision via Docker; reverse proxy via Caddy/Nginx (deployment-time, not template-time) |
-| RAG | **Not in this template**; lives in `template-mastra-rag` | Keeps base lean |
-| Sentry | **Not in this template** for now; can be added later as custom observability exporter | Mastra Studio handles current needs |
-| VAPI / LiveKit | **Not in this template**; they're external platforms that call Mastra's auto-generated REST endpoint | No custom plumbing needed at template level |
-| NCA Toolkit | **Not in this template**; lives in `template-mastra-nca` | Keeps base lean |
-| TypeScript path aliases inside `src/mastra/` | **Not used** — relative imports only | Mastra's bundler has known issues resolving aliases in some configurations |
+| Endpoint coverage | importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs | Covers the full import → edit → publish pipeline plus project/job inspection. Clients add more; the client helper makes new wrappers small. |
+| Async ops | Tools poll internally via the client's `pollJob` — they don't return until the underlying job finishes | The agent never has to manage polling; a tool call is a complete operation |
+| Job status model | Tools surface BOTH `job_state` ("running"/"stopped") and nested `result.status` ("success"/"partial"/"failed") | Descript's two-field status is a real gotcha; exposing both prevents the agent from misreporting partial results |
+| Default agent model | `anthropic/claude-sonnet-4-6` | Owner default; strong at multi-step tool orchestration |
+| Auth | `DESCRIPT_API_TOKEN` Bearer token, scoped to a single Drive | Matches Descript's API token model |
+| Health check | `DESCRIPT_HEALTHCHECK_ON_BOOT=true` pings the API at startup | Optional; catches a bad token early at the cost of boot latency |
+| Retry / timeout | 3 retries (5xx + network), 60s timeout, 3s poll interval, 600 max polls | Defaults via env; tuned for Descript's async render times |
 
-## What this template ships with
+## What this template ships with that clients keep
 
-A canonical example agent (`leadIntake`) that demonstrates every convention: structured output (Zod), one tool, scorer registration with sampling config, JSDoc README block, env-driven config, paired CI eval dataset. Devs adding new agents copy this file as a starting point.
-
-## What this template does NOT ship
-
-- Custom logger code (use `mastra.getLogger().child()`)
-- Custom scorer harness (use `@mastra/core/evals` + `@mastra/evals`)
-- Sentry integration
-- Pgvector / RAG
-- Voice
-- Frontend (Next.js)
-- VAPI/LiveKit webhooks
-- NCA Toolkit tools
-- A custom Express/Hono server (Mastra's auto-generated server is sufficient)
-- PM2 / systemd configs (Docker handles process supervision)
-- Caddy / Nginx configs (those are deployment-time)
+- The Descript HTTP client (`src/mastra/lib/descript-client.ts`) — auth, retry, timeout, and the `pollJob` helper
+- 7 working tool wrappers across 5 files — use as-is or copy-and-adapt for other Descript endpoints
+- The async job-polling pattern baked into every mutating tool
+- A working automation agent that demonstrates the import → edit → publish pipeline
 
 ## Quality bar
 
-- **Typecheck must pass** with zero errors and no `any`.
-- **Mastra build must succeed** (`npx mastra build`) — this is the production bundle.
-- **Live smoke test must succeed** — the example agent responds correctly with real Anthropic key.
-- **CI eval gate must pass** — running the offline scorer against AIMock fixtures returns scores ≥ thresholds.
-- **Docker build must succeed** and the container must boot to a healthy state.
+Same as base, plus:
 
-If any of these fail, the build is incomplete. Document the failure in `PROGRESS.md` and either fix it or escalate to the owner.
+- **Connectivity passes** — `npm run descript:ping` authenticates against the Descript API with the configured token
+- **Tool calls succeed** — a text-mode test in Studio runs a real Descript operation (e.g. list projects, or import → edit) and returns a result
+- **Eval gate passes** — tool-call accuracy + answer relevancy scorers clear thresholds against canonical Descript requests
+- **Polling works** — for a long-running render, the agent calls the tool once and gets the final result without timing out
+
+## What this template does NOT include
+
+- A Descript account / Drive (clients bring their own API token)
+- Every Descript API endpoint (focused subset in v1)
+- A webhook receiver (polling only)
+- File upload (callers pass a public media URL to `importMedia`)
+- Frontend (Next.js), VAPI/LiveKit webhooks, PM2/systemd, or reverse-proxy configs (deployment-time)

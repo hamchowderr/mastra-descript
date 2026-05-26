@@ -13,7 +13,7 @@ The standard reachability stack is built in from Phase 0 of `04-build-order.md`:
 
 The descriptAgent has a non-empty `description` from the start, so MCPServer registration won't throw at boot.
 
-If something goes wrong during the build that requires re-running the reachability configuration, refer to `template-mastra-base/SPEC/polish-protocols/` for the polish pattern. The shape is identical.
+If something goes wrong during the build that requires re-running the reachability configuration, refer to `template-mastra-descript/SPEC/polish-protocols/` for the polish pattern. The shape is identical.
 
 ## Why this folder exists at all
 

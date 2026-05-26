@@ -89,14 +89,14 @@ After Polish 05, write the final consolidated entry per the polish 00-README.md 
 - Status: complete
 - All 5 polish steps:
   - 01 Manual Studio test: pass
-  - 02 GitHub publish & CI: pass — repo at https://github.com/<org>/template-mastra-base
+  - 02 GitHub publish & CI: pass — repo at https://github.com/<org>/template-mastra-descript
   - 03 Provisioning test: pass
-  - 04 Completeness scorer: <replaced with X | dropped | something else>
+  - 04 Scorer review: N/A (descript uses toolCallAccuracy + answerRelevancy, not completeness)
   - 05 Documentation updates: pass
 - Outstanding issues: <if any>
-- Recommended next action: ready to start child templates (rag, voice, chat, nca)
+- Recommended next action: descript template ready to ship / fork per client
 ```
 
 ## You're done
 
-After this, the base template is genuinely production-ready. Hand back to the owner, who will start the four child templates (likely RAG first).
+After this, the Descript template is genuinely production-ready. Hand back to the owner to ship it or fork it per client.
