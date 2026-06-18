@@ -18,6 +18,9 @@ mastra.duckdb*
 # Claude Code <-> bd task-ID map (per-machine, not source)
 .beads/cc-task-map.json
 
+# Internal build/spec notes — kept local, not published to the template repo
+SPEC/
+
 # OS junk
 .DS_Store
 Thumbs.db
