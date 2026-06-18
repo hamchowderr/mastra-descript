@@ -17,7 +17,7 @@
 - src/lib/env.ts: added 7 Descript env vars (DESCRIPT_API_TOKEN required; 6 optional with defaults)
 - .env.example: Descript section added; .env: populated via bash cp + append (Write tool blocked by secret scanner)
 - APP_SECRET: fresh generated for this project
-- Note: Infisical stores the token as DESCRIPT_API_KEY (not DESCRIPT_API_TOKEN) in root env
+- Note: canonical secret name is DESCRIPT_API_TOKEN (matches src/lib/env.ts). The duplicate DESCRIPT_API_KEY was deleted from Infisical otaku-internal (dev) on 2026-06-18 to prevent drift — descript-nhk.1
 
 ## Phase 3: DescriptClient library — COMPLETE
 - Status: complete
