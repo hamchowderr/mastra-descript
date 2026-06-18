@@ -47,6 +47,12 @@
       "response": {
         "content": "I'll use cancelJob to cancel job abc123 right away (only works while the job is still running)."
       }
+    },
+    {
+      "match": { "userMessage": "Delete project abc123 permanently." },
+      "response": {
+        "content": "The Descript API has no endpoint for deleting a project, so I can't do that for you — you'll need to delete it directly in the Descript app."
+      }
     }
   ]
 }

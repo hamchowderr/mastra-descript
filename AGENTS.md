@@ -65,7 +65,9 @@ Tools used only by one agent can live inline. Shared tools go in `src/mastra/too
 
 ## Descript API Conventions
 
-The Descript API is **async and job-based**. Every mutation (importMedia, agentEdit, publish) returns a job ID. The tools in `src/mastra/tools/` handle polling automatically via `DescriptClient.waitForJob()` — they do not return until the job is done.
+The Descript API is **async and job-based**. Every mutation (importMedia, agentEdit, publish) returns a job ID. The tools in `src/mastra/tools/` handle polling automatically via `DescriptClient.pollJob()` — they do not return until the job is done (unless `callback_url` is set, in which case they return immediately and Descript webhooks the result).
+
+Cost model: **only `agentEdit` spends AI credits** (it invokes Underlord). `importMedia` spends media-seconds (transcription); `publish` spends render time; reads/`cancelJob` are free. Each tool's description carries a `COST:` tag, and `getCostTotals` reports the running session total. `agentEdit` defaults to the cheap `haiku-4.5-underlord` model and accepts `conversation_id` for multi-turn editing.
 
 A job has two status fields:
 - Top-level `job_state`: `"running"` | `"stopped"`
@@ -93,7 +95,7 @@ The Descript template uses **tool-call accuracy** eval (not structured output co
   "thresholds": { "toolCallAccuracy": 0.85, "answerRelevancy": 0.80 },
   "cases": [
     { "name": "list projects", "input": "Show me all my projects.", "expectedTool": "listProjects" },
-    { "name": "no matching tool", "input": "Cancel job abc123.", "expectedTool": null }
+    { "name": "no matching tool", "input": "Delete project abc123.", "expectedTool": null }
   ]
 }
 ```
