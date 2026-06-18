@@ -71,7 +71,7 @@ export async function validateMediaUrl(url: string, timeoutMs = 10000): Promise<
 export const importMedia = createTool({
   id: 'importMedia',
   description:
-    'Import one or more media files from publicly-accessible URLs into a Descript project. Creates a new project if project_name is provided, or adds to an existing project if project_id is provided. All media are added as clips of a single composition, in the order given. Polls until the import job completes. Returns the project_id, project_url, media_count, and final job status.',
+    'Import one or more media files from publicly-accessible URLs into a Descript project. Creates a new project if project_name is provided, or adds to an existing project if project_id is provided. All media are added as clips of a single composition, in the order given. Polls until the import job completes. Returns the project_id, project_url, media_count, and final job status. COST: spends media minutes (transcription of the imported media); does NOT invoke Underlord or spend AI credits.',
   inputSchema: z.object({
     media: z
       .array(mediaItem)

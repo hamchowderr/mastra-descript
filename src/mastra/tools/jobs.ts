@@ -5,7 +5,7 @@ import { env } from '../../lib/env';
 
 export const getJob = createTool({
   id: 'getJob',
-  description: 'Get the current status of a specific Descript job. Returns the full job object including job_state (running/stopped) and result.status (success/partial/failed) when complete.',
+  description: 'Get the current status of a specific Descript job. Returns the full job object including job_state (running/stopped) and result.status (success/partial/failed) when complete. COST: free — read-only, no AI credits or media minutes.',
   inputSchema: z.object({
     job_id: z.string().uuid(),
   }),
@@ -40,7 +40,7 @@ export const getJob = createTool({
 export const cancelJob = createTool({
   id: 'cancelJob',
   description:
-    'Cancel a RUNNING Descript job (import, agent edit, or publish) via DELETE /jobs/{job_id}. Only jobs whose job_state is "running" can be cancelled — a job that has already stopped cannot. Returns confirmation; surfaces an error if the job is not found or already finished.',
+    'Cancel a RUNNING Descript job (import, agent edit, or publish) via DELETE /jobs/{job_id}. Only jobs whose job_state is "running" can be cancelled — a job that has already stopped cannot. Returns confirmation; surfaces an error if the job is not found or already finished. COST: free.',
   inputSchema: z.object({
     job_id: z.string().uuid(),
   }),
@@ -57,7 +57,7 @@ export const cancelJob = createTool({
 
 export const listJobs = createTool({
   id: 'listJobs',
-  description: 'List recent Descript jobs, optionally filtered by project_id, type, or date range. Use this when you need to find a recent job whose ID was lost.',
+  description: 'List recent Descript jobs, optionally filtered by project_id, type, or date range. Use this when you need to find a recent job whose ID was lost. COST: free — read-only, no AI credits or media minutes.',
   inputSchema: z.object({
     project_id: z.string().uuid().optional(),
     type: z.string().optional().describe('Filter by job type, e.g. "import/project_media" or "agent"'),

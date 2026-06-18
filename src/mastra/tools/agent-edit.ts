@@ -5,7 +5,7 @@ import { env } from '../../lib/env';
 
 export const agentEdit = createTool({
   id: 'agentEdit',
-  description: 'Edit a Descript project (or create a new one) using a natural language prompt. Underlord AI handles the actual editing. Use this for tasks like "remove filler words", "add captions", "create a 60-second highlight reel", etc. Polls until the edit job completes.',
+  description: 'Edit a Descript project (or create a new one) using a natural language prompt. Underlord AI handles the actual editing. Use this for tasks like "remove filler words", "add captions", "create a 60-second highlight reel", etc. Polls until the edit job completes. COST: spends AI credits — this is the ONLY tool that invokes Underlord (Descript\'s AI). Credits scale with the model and the amount of work; keep prompts tight.',
   inputSchema: z.object({
     prompt: z.string().min(1).describe('Natural language editing instruction'),
     project_id: z.string().uuid().optional().describe('UUID of an existing project to edit (mutually exclusive with project_name)'),

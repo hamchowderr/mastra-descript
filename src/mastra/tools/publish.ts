@@ -5,7 +5,7 @@ import { env } from '../../lib/env';
 
 export const publish = createTool({
   id: 'publish',
-  description: 'Publish a Descript composition as a shareable video or audio link. Returns share_url and download_url once the render completes. Polls until the publish job completes.',
+  description: 'Publish a Descript composition as a shareable video or audio link. Returns share_url and download_url once the render completes. Polls until the publish job completes. COST: spends render/processing time; does NOT invoke Underlord or spend AI credits.',
   inputSchema: z.object({
     project_id: z.string().uuid(),
     composition_id: z.string().optional().describe('Optional composition UUID. Defaults to the primary composition if omitted.'),
