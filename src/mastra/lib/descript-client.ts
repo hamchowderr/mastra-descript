@@ -123,9 +123,9 @@ export class DescriptClient {
     );
   }
 
-  /** Validate auth by calling GET /projects?limit=1. The documented /status endpoint is "not yet available". */
-  async healthcheck(): Promise<void> {
-    await this.request<unknown>('/projects?limit=1', { method: 'GET' });
+  /** Validate auth + connectivity via GET /status (live since 2026-06-18; returns the token's drive_id + api_version). */
+  async healthcheck(): Promise<{ drive_id?: string; api_version?: string }> {
+    return this.request<{ drive_id?: string; api_version?: string }>('/status', { method: 'GET' });
   }
 
   // ---------------------------------------------------------------------------

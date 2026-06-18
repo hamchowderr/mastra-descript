@@ -4,8 +4,10 @@ import { DescriptClient } from '../src/mastra/lib/descript-client';
 async function main() {
   const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
   try {
-    await client.healthcheck();
-    console.log('✓ Descript API is reachable and the API token is valid.');
+    const status = await client.healthcheck();
+    console.log(
+      `✓ Descript API is reachable and the API token is valid.${status.api_version ? ` (api_version ${status.api_version})` : ''}`,
+    );
     process.exit(0);
   } catch (err) {
     console.error('✗ Descript API check failed:');
