@@ -2,6 +2,20 @@
 
 ---
 
+## Behavioral Verification (epic descript-z2v) — 2026-06-18
+
+Empirically verified the Descript API against community claims, via our own agent + `scripts/descript-verify.ts` (REST + bearer, **not** the OAuth MCP most reporters use). Total spend: **30 media-seconds + 2 AI credits**. Full writeup + refuted claims: vault note **`3. Resources/Descript API Field Notes.md`**.
+
+**Confirmed:** bearer auth works headless (REST); list/get shapes match contract; `GET /status` now LIVE (`{drive_id, api_version}`); no credits-remaining endpoint (8 paths 404); cost split — `import` = media-seconds only, `agentEdit` = AI credits (`haiku-4.5-underlord` ≈ 2cr; only `agentEdit` hits Underlord); Underlord is multi-provider (14-model enum); `conversation_id` present (multi-turn).
+
+**Refuted:** "can't put multiple files in one project" (multi-key `add_media` works); "truncated agent responses" (full `agent_response` returned); "API can't cancel jobs" (`DELETE /jobs/{id}` → 204); BBB "metadata" failure (that URL is now 403/dead — not a Descript bug).
+
+**Shipped from findings:** `descript-verify.ts` harness, multi-file import (nhk.2), `/status` healthcheck (nhk.9), URL pre-validation (nhk.6), `cancelJob` tool (nhk.10), tool cost annotations (nhk.11), cheap default model (nhk.7).
+
+**Still open (spend-gated):** per-model cost comparison, plan-approval stall on complex prompts, multitrack publish, WEBVTT subtitle export, import edge cases.
+
+---
+
 ## Phase 0: Fork base via degit — COMPLETE
 - Status: complete
 - Degit: hamchowderr/template-mastra-base → /tmp/mastra-base-fork → merged into working directory (SPEC/ already present)
