@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { DescriptClient } from '../lib/descript-client';
+import { costMeter } from '../lib/cost-meter';
 import { env } from '../../lib/env';
 
 export const agentEdit = createTool({
@@ -34,6 +35,8 @@ export const agentEdit = createTool({
     error: z.string().optional(),
   }),
   execute: async (context) => {
+    // Guardrail: abort before spending if this session already hit DESCRIPT_CREDIT_CAP.
+    costMeter.assertCreditCap();
     const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
     const job = await client.agentEdit(context);
     if (context.callback_url) {
@@ -42,16 +45,27 @@ export const agentEdit = createTool({
     }
     const final = await client.pollJob(job.job_id);
     const result = final.result ?? {};
-    const status = result.status as 'success' | 'partial' | 'failed' | undefined;
+    const apiStatus = result.status as 'success' | 'partial' | 'failed' | undefined;
+    const aiCredits = typeof result.ai_credits_used === 'number' ? result.ai_credits_used : undefined;
+    const projectChanged = typeof result.project_changed === 'boolean' ? result.project_changed : undefined;
+    costMeter.addCredits(aiCredits);
+    // nhk.5: Underlord can report success while project_changed=false — it stalled at the
+    // creative-brief/plan-approval step and built nothing. Surface that as a distinct non-success.
+    const stalled = apiStatus !== 'failed' && projectChanged === false;
     return {
       job_id: job.job_id,
       project_id: job.project_id,
       project_url: job.project_url,
-      status,
-      ai_credits_used: typeof result.ai_credits_used === 'number' ? result.ai_credits_used : undefined,
+      status: stalled ? 'partial' : apiStatus,
+      ai_credits_used: aiCredits,
       agent_response: typeof result.agent_response === 'string' ? result.agent_response : undefined,
-      project_changed: typeof result.project_changed === 'boolean' ? result.project_changed : undefined,
-      error: status === 'failed' ? String(result.error ?? 'Agent edit failed') : undefined,
+      project_changed: projectChanged,
+      error:
+        apiStatus === 'failed'
+          ? String(result.error ?? 'Agent edit failed')
+          : stalled
+            ? 'Underlord returned success but project_changed=false — the edit did NOT execute (it likely stalled awaiting creative-brief/plan approval). Re-run with a more explicit, directive prompt.'
+            : undefined,
     };
   },
 });

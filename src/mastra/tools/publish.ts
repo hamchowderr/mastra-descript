@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { DescriptClient } from '../lib/descript-client';
+import { costMeter } from '../lib/cost-meter';
 import { env } from '../../lib/env';
 
 export const publish = createTool({
@@ -45,6 +46,7 @@ export const publish = createTool({
     const final = await client.pollJob(job.job_id);
     const result = final.result ?? {};
     const status = result.status as 'success' | 'partial' | 'failed' | undefined;
+    costMeter.addMediaSeconds(typeof result.media_seconds_used === 'number' ? result.media_seconds_used : undefined);
     return {
       job_id: job.job_id,
       project_id: job.project_id,

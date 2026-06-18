@@ -51,6 +51,9 @@ const envSchema = z
     DESCRIPT_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(3000),
     DESCRIPT_POLL_MAX_ATTEMPTS: z.coerce.number().int().positive().default(600),
     DESCRIPT_HEALTHCHECK_ON_BOOT: z.coerce.boolean().default(false),
+    // Optional guardrail: abort an agentEdit before submit once this many AI credits
+    // have been spent THIS SESSION (cumulative — there's no credits-remaining endpoint).
+    DESCRIPT_CREDIT_CAP: z.coerce.number().int().positive().optional(),
   })
   .refine(
     (e) => Boolean(e.ANTHROPIC_API_KEY || e.OPENAI_API_KEY || e.GOOGLE_GENERATIVE_AI_API_KEY),

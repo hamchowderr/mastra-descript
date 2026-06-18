@@ -298,6 +298,7 @@ Descript-specific tunables (all have defaults):
 | `DESCRIPT_POLL_INTERVAL_MS` | `3000` | Job polling interval |
 | `DESCRIPT_POLL_MAX_ATTEMPTS` | `600` | Max poll attempts before timeout |
 | `DESCRIPT_HEALTHCHECK_ON_BOOT` | `false` | Verify token on every startup |
+| `DESCRIPT_CREDIT_CAP` | _(unset)_ | Optional. Abort `agentEdit` before submit once this many AI credits are spent this session (no balance endpoint exists, so it's cumulative). |
 
 ---
 

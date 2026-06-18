@@ -5,6 +5,7 @@ import { publish } from '../tools/publish';
 import { listProjects, getProject } from '../tools/projects';
 import { getJob, listJobs, cancelJob } from '../tools/jobs';
 import { getPublishedSubtitles } from '../tools/published';
+import { getCostTotals } from '../tools/cost';
 import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
 import { createDefaultMemory } from '../lib/memory';
 
@@ -23,6 +24,7 @@ You can:
 - Check job status (getJob, listJobs)
 - Cancel a running job (cancelJob)
 - Fetch WEBVTT subtitles for a published project by its share-URL slug (getPublishedSubtitles)
+- Report this session's cumulative spend — AI credits + media-seconds (getCostTotals)
 
 How Descript works:
 - All mutations (import, edit, publish) are async. They return a job_id and you poll until the job completes.
@@ -52,8 +54,10 @@ Rules:
 - For publish, default to Video at 1080p unless the user specifies otherwise.
 - If a tool call returns status "failed" with an error message, summarize the error for the user without retrying.
 - Only RUNNING jobs can be cancelled (cancelJob). If a user asks to cancel a job that has already stopped, tell them it has already finished rather than attempting to cancel.
-- Only agentEdit invokes Underlord (the AI) and spends AI credits. Imports, publishes, reads, and cancels do NOT call Underlord — don't imply they cost AI credits.`,
-  tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs, cancelJob, getPublishedSubtitles },
+- Only agentEdit invokes Underlord (the AI) and spends AI credits. Imports, publishes, reads, and cancels do NOT call Underlord — don't imply they cost AI credits.
+- If agentEdit returns project_changed:false (status "partial" with a stall message), the edit did NOT run — Underlord stalled at plan/brief approval. Tell the user it didn't execute and suggest a more explicit prompt; never report it as done.
+- For "how many credits have I used?" use getCostTotals (a running session total — Descript has no balance endpoint).`,
+  tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs, cancelJob, getPublishedSubtitles, getCostTotals },
   memory: createDefaultMemory(),
   // Shared safety/hygiene baseline — see src/mastra/lib/processors.ts.
   inputProcessors: defaultInputProcessors,

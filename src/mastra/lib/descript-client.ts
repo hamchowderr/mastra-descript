@@ -34,6 +34,26 @@ class DescriptApiError extends Error {
   }
 }
 
+/** Format a 402 body into a clear "out of credits (need X, have Y)" message (shape unconfirmed — parse defensively). */
+function formatPaymentRequired(body: unknown, fallback: string): string {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const num = (...keys: string[]) => {
+    for (const k of keys) {
+      const v = b[k];
+      if (typeof v === 'number') return v;
+    }
+    return undefined;
+  };
+  const required = num('required', 'credits_required', 'ai_credits_required', 'cost');
+  const available = num('available', 'credits_available', 'ai_credits_available', 'balance');
+  if (required != null || available != null) {
+    return `Out of AI credits — need ${required ?? '?'}, have ${available ?? '?'} (HTTP 402).`;
+  }
+  const m = typeof fallback === 'string' ? fallback.match(/(\d+)\D+required\D+(\d+)\D+available/i) : null;
+  if (m) return `Out of AI credits — need ${m[1]}, have ${m[2]} (HTTP 402).`;
+  return `Out of AI credits (HTTP 402): ${fallback}`;
+}
+
 export class DescriptClient {
   private headers: Record<string, string>;
   private baseUrl: string;
@@ -96,9 +116,12 @@ export class DescriptClient {
         } catch {
           body = await res.text().catch(() => res.statusText);
         }
-        const message = typeof body === 'string'
+        let message = typeof body === 'string'
           ? body
           : body.message ?? `Descript API ${res.status}`;
+        // 402 = out of AI credits. Ian Gray reported the body carries "X required, Y available";
+        // exact shape is unconfirmed, so parse defensively into a clear, actionable message.
+        if (res.status === 402) message = formatPaymentRequired(body, message);
         throw new DescriptApiError(res.status, message);
       }
 
