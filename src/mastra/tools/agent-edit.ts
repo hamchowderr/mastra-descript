@@ -11,7 +11,12 @@ export const agentEdit = createTool({
     project_id: z.string().uuid().optional().describe('UUID of an existing project to edit (mutually exclusive with project_name)'),
     project_name: z.string().optional().describe('Name for a new project (mutually exclusive with project_id; useful for "Write a script about X" prompts)'),
     composition_id: z.string().optional().describe('UUID, 5-char short ID, or project URL of a specific composition (requires project_id)'),
-    model: z.string().optional().describe('Override the default Underlord model'),
+    model: z
+      .string()
+      .default('haiku-4.5-underlord')
+      .describe(
+        'Underlord model. Defaults to haiku-4.5-underlord — the cheapest (≈2 AI credits for a trivial edit, verified). Valid values: haiku-4.5-underlord, sonnet-4.6-underlord, opus-4.6-underlord, automatic (Descript\'s default, most expensive), opus-4.6, opus-4.7, opus-4.8, fable-5. Override with a stronger model only for complex edits.',
+      ),
   }),
   outputSchema: z.object({
     job_id: z.string(),

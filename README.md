@@ -194,6 +194,19 @@ agentEdit({ project_name: '...', prompt: 'Write a 60-second script about X' })
 
 All mutations (import, edit, publish) are async job-based. Tools poll until the job completes and return the final result — callers don't need to manage polling.
 
+### Cost model — what spends what
+
+Descript bills on **two separate meters**. Only one tool touches the AI.
+
+| Operation | AI credits (Underlord)? | What it costs |
+|---|---|---|
+| `agentEdit` | ✅ **yes** — the only AI tool | AI credits (`ai_credits_used`). Scales with model + work. |
+| `importMedia` | ❌ no | media-seconds (`media_seconds_used`) — transcription |
+| `publish` | ❌ no | render/encode time |
+| `listProjects` / `getProject` / `getJob` / `listJobs` / `cancelJob` | ❌ no | free (read/control) |
+
+`agentEdit` defaults to **`haiku-4.5-underlord`**, the cheapest model (≈2 credits for a trivial edit; the `automatic` default is the priciest). Each tool's description carries an explicit `COST:` tag for the agent. Don't conflate "made an API call" with "spent AI credits" — only `agentEdit` does.
+
 ---
 
 ## Running Evals
