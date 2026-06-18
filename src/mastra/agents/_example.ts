@@ -3,7 +3,7 @@ import { importMedia } from '../tools/import-media';
 import { agentEdit } from '../tools/agent-edit';
 import { publish } from '../tools/publish';
 import { listProjects, getProject } from '../tools/projects';
-import { getJob, listJobs } from '../tools/jobs';
+import { getJob, listJobs, cancelJob } from '../tools/jobs';
 import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
 import { createDefaultMemory } from '../lib/memory';
 
@@ -20,6 +20,7 @@ You can:
 - Publish a composition to a shareable + downloadable link (publish)
 - List and inspect projects (listProjects, getProject)
 - Check job status (getJob, listJobs)
+- Cancel a running job (cancelJob)
 
 How Descript works:
 - All mutations (import, edit, publish) are async. They return a job_id and you poll until the job completes.
@@ -47,8 +48,10 @@ Rules:
 - When chaining import → edit, wait for importMedia to complete (status: "success") before calling agentEdit.
 - If status is "partial", surface that to the user — partial means some operations succeeded but others didn't.
 - For publish, default to Video at 1080p unless the user specifies otherwise.
-- If a tool call returns status "failed" with an error message, summarize the error for the user without retrying.`,
-  tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs },
+- If a tool call returns status "failed" with an error message, summarize the error for the user without retrying.
+- Only RUNNING jobs can be cancelled (cancelJob). If a user asks to cancel a job that has already stopped, tell them it has already finished rather than attempting to cancel.
+- Only agentEdit invokes Underlord (the AI) and spends AI credits. Imports, publishes, reads, and cancels do NOT call Underlord — don't imply they cost AI credits.`,
+  tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs, cancelJob },
   memory: createDefaultMemory(),
   // Shared safety/hygiene baseline — see src/mastra/lib/processors.ts.
   inputProcessors: defaultInputProcessors,

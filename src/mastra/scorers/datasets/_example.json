@@ -41,9 +41,9 @@
       "expectedTool": "listJobs"
     },
     {
-      "name": "cancel job - no tool available",
+      "name": "cancel a running job",
       "input": "Cancel job abc123 immediately.",
-      "expectedTool": null
+      "expectedTool": "cancelJob"
     }
   ]
 }

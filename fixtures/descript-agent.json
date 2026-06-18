@@ -45,7 +45,7 @@
     {
       "match": { "userMessage": "Cancel job abc123 immediately." },
       "response": {
-        "content": "I'm sorry, but the Descript API does not support cancelling jobs. Once a job is running, it cannot be stopped via the API. You may be able to cancel it from the Descript Studio interface directly."
+        "content": "I'll use cancelJob to cancel job abc123 right away (only works while the job is still running)."
       }
     }
   ]

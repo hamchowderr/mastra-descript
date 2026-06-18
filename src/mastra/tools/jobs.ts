@@ -37,6 +37,24 @@ export const getJob = createTool({
   },
 });
 
+export const cancelJob = createTool({
+  id: 'cancelJob',
+  description:
+    'Cancel a RUNNING Descript job (import, agent edit, or publish) via DELETE /jobs/{job_id}. Only jobs whose job_state is "running" can be cancelled — a job that has already stopped cannot. Returns confirmation; surfaces an error if the job is not found or already finished.',
+  inputSchema: z.object({
+    job_id: z.string().uuid(),
+  }),
+  outputSchema: z.object({
+    job_id: z.string(),
+    cancelled: z.boolean(),
+  }),
+  execute: async (context) => {
+    const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
+    await client.cancelJob(context.job_id);
+    return { job_id: context.job_id, cancelled: true };
+  },
+});
+
 export const listJobs = createTool({
   id: 'listJobs',
   description: 'List recent Descript jobs, optionally filtered by project_id, type, or date range. Use this when you need to find a recent job whose ID was lost.',
