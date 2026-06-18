@@ -39,6 +39,35 @@ export function buildImportPayload(input: {
   };
 }
 
+/**
+ * Pre-flight a media URL the way Descript's importer does (aakrokr's analysis: HEAD + GET Range:0-0)
+ * so a bad URL fails INSTANTLY here instead of burning a Descript import job + media minutes.
+ * The fetch hits the media host (1 byte), never Descript — zero Descript cost. Returns ok or a reason.
+ */
+export async function validateMediaUrl(url: string, timeoutMs = 10000): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-0' }, redirect: 'follow', signal: ac.signal });
+  } catch (e) {
+    return { ok: false, reason: `unreachable or timed out (${e instanceof Error ? e.message : String(e)})` };
+  } finally {
+    clearTimeout(timer);
+  }
+  if (res.status === 401 || res.status === 403) return { ok: false, reason: `not publicly accessible (HTTP ${res.status}); Descript needs a public or pre-signed URL` };
+  if (res.status === 404) return { ok: false, reason: 'not found (HTTP 404)' };
+  if (res.status !== 206 && !res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+  const acceptRanges = res.headers.get('accept-ranges');
+  if (res.status !== 206 && acceptRanges !== 'bytes') {
+    return { ok: false, reason: `no HTTP Range support (status ${res.status}, Accept-Ranges: ${acceptRanges ?? 'none'}); Descript requires range requests` };
+  }
+  const ct = (res.headers.get('content-type') ?? '').toLowerCase().split(';')[0].trim();
+  const okType = ct === '' || /^(video|audio)\//.test(ct) || ct === 'application/octet-stream';
+  if (!okType) return { ok: false, reason: `unexpected Content-Type "${ct}" (expected video/* or audio/*) — is this a real media file?` };
+  return { ok: true };
+}
+
 export const importMedia = createTool({
   id: 'importMedia',
   description:
@@ -56,6 +85,10 @@ export const importMedia = createTool({
       .optional()
       .describe('Optional folder for a NEW project; nested paths supported with "/" (e.g. "Client Work/Q3"). Ignored when adding to an existing project_id.'),
     team_access: z.enum(['edit', 'comment', 'view', 'none']).optional().describe('Access level for new projects only'),
+    skip_url_validation: z
+      .boolean()
+      .default(false)
+      .describe('Skip the pre-flight URL reachability/Range check (only set true if a valid URL is being wrongly rejected)'),
   }),
   outputSchema: z.object({
     job_id: z.string(),
@@ -68,6 +101,19 @@ export const importMedia = createTool({
   execute: async (context) => {
     if (Boolean(context.project_name) === Boolean(context.project_id)) {
       throw new Error('Provide exactly one of project_name (new project) or project_id (existing project).');
+    }
+    if (!context.skip_url_validation) {
+      const checks = await Promise.all(
+        context.media.map(async (m) => ({ url: m.url, result: await validateMediaUrl(m.url) })),
+      );
+      const bad = checks.filter((c) => !c.result.ok);
+      if (bad.length > 0) {
+        throw new Error(
+          `URL pre-validation failed for ${bad.length} of ${context.media.length} media file(s) — not submitting (saves media minutes):\n` +
+            bad.map((b) => `  • ${b.url} — ${(b.result as { reason: string }).reason}`).join('\n') +
+            '\nFix the URL(s), or pass skip_url_validation: true to bypass.',
+        );
+      }
     }
     const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
     const job = await client.importMedia(buildImportPayload(context));
