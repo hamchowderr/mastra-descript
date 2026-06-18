@@ -52,12 +52,12 @@ const pgStore = new PostgresStore({ id: 'mastra-storage', connectionString: env.
 // behind a Bearer JWT signed with the shared secret. `/health` and `/api/auth/*`
 // stay public (so healthchecks and the Studio login screen still work). Leave
 // the secret unset for open local dev. Shared-secret only — no external provider.
-const server = env.MASTRA_JWT_SECRET
+const serverConfig = env.MASTRA_JWT_SECRET
   ? { auth: new MastraJwtAuth({ secret: env.MASTRA_JWT_SECRET }) }
   : undefined;
 
 export const mastra = new Mastra({
-  ...(server ? { server } : {}),
+  ...(serverConfig ? { server: serverConfig } : {}),
   agents: { descript: descriptAgent },
   scorers: { toolCallAccuracyScorer, answerRelevancyScorer },
   mcpServers: { descriptMcp },

@@ -267,7 +267,7 @@ USE_AIMOCK=true npm run eval                 # deterministic, no API cost
 
 # Docker
 docker build -t mastra-descript:test . && docker compose up -d
-curl http://localhost:4111/api/health
+curl http://localhost:4111/health
 ```
 
 The **verification harness** (`descript:verify`) is cost-ordered and safe-by-default: free read-only checks always run; write-safe and credit-spending phases are gated behind env flags. The **eval gate** checks tool selection (`toolCallAccuracy ≥ 0.85`) and answer relevancy (`≥ 0.80`); under AIMock it verifies routing deterministically with zero API cost. CI runs typecheck → build + eval → docker on every push.
