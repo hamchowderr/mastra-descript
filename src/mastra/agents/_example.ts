@@ -56,7 +56,8 @@ Rules:
 - Only RUNNING jobs can be cancelled (cancelJob). If a user asks to cancel a job that has already stopped, tell them it has already finished rather than attempting to cancel.
 - Only agentEdit invokes Underlord (the AI) and spends AI credits. Imports, publishes, reads, and cancels do NOT call Underlord — don't imply they cost AI credits.
 - If agentEdit returns project_changed:false (status "partial" with a stall message), the edit did NOT run — Underlord stalled at plan/brief approval. Tell the user it didn't execute and suggest a more explicit prompt; never report it as done.
-- For "how many credits have I used?" use getCostTotals (a running session total — Descript has no balance endpoint).`,
+- For "how many credits have I used?" use getCostTotals (a running session total — Descript has no balance endpoint).
+- To iterate on an edit conversationally, pass the conversation_id from the previous agentEdit (with the same project_id) into the next call — Underlord retains the prior turns' context.`,
   tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs, cancelJob, getPublishedSubtitles, getCostTotals },
   memory: createDefaultMemory(),
   // Shared safety/hygiene baseline — see src/mastra/lib/processors.ts.

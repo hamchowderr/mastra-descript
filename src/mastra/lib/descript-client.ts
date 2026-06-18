@@ -178,6 +178,8 @@ export class DescriptClient {
     model?: string;
     team_access?: 'edit' | 'comment' | 'view' | 'none';
     callback_url?: string;
+    /** Continue a prior Underlord session (multi-turn — retains context). Pass the conversation_id from a previous agent job. */
+    conversation_id?: string;
   }): Promise<{ job_id: string; drive_id: string; project_id: string; project_url: string }> {
     return this.request('/jobs/agent', {
       method: 'POST',

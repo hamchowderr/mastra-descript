@@ -23,6 +23,10 @@ export const agentEdit = createTool({
       .url()
       .optional()
       .describe('Optional webhook. If set, Descript POSTs the full job result here on completion and the tool returns IMMEDIATELY without polling (best for long edits). If omitted, the tool polls to completion (default).'),
+    conversation_id: z
+      .string()
+      .optional()
+      .describe('Continue a prior Underlord session (multi-turn — Underlord retains context across turns). Pass the conversation_id returned by a previous agentEdit, along with the same project_id, to iterate on an edit.'),
   }),
   outputSchema: z.object({
     job_id: z.string(),
@@ -32,6 +36,7 @@ export const agentEdit = createTool({
     ai_credits_used: z.number().optional(),
     agent_response: z.string().optional(),
     project_changed: z.boolean().optional(),
+    conversation_id: z.string().optional().describe('Pass this back as conversation_id on the next agentEdit to continue this Underlord session.'),
     error: z.string().optional(),
   }),
   execute: async (context) => {
@@ -41,7 +46,7 @@ export const agentEdit = createTool({
     const job = await client.agentEdit(context);
     if (context.callback_url) {
       // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
-      return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, ai_credits_used: undefined, agent_response: undefined, project_changed: undefined, error: undefined };
+      return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, ai_credits_used: undefined, agent_response: undefined, project_changed: undefined, conversation_id: undefined, error: undefined };
     }
     const final = await client.pollJob(job.job_id);
     const result = final.result ?? {};
@@ -60,6 +65,7 @@ export const agentEdit = createTool({
       ai_credits_used: aiCredits,
       agent_response: typeof result.agent_response === 'string' ? result.agent_response : undefined,
       project_changed: projectChanged,
+      conversation_id: typeof result.conversation_id === 'string' ? result.conversation_id : undefined,
       error:
         apiStatus === 'failed'
           ? String(result.error ?? 'Agent edit failed')
