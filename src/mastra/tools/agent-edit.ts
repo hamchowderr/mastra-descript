@@ -17,6 +17,11 @@ export const agentEdit = createTool({
       .describe(
         'Underlord model. Defaults to haiku-4.5-underlord — the cheapest (≈2 AI credits for a trivial edit, verified). Valid values: haiku-4.5-underlord, sonnet-4.6-underlord, opus-4.6-underlord, automatic (Descript\'s default, most expensive), opus-4.6, opus-4.7, opus-4.8, fable-5. Override with a stronger model only for complex edits.',
       ),
+    callback_url: z
+      .string()
+      .url()
+      .optional()
+      .describe('Optional webhook. If set, Descript POSTs the full job result here on completion and the tool returns IMMEDIATELY without polling (best for long edits). If omitted, the tool polls to completion (default).'),
   }),
   outputSchema: z.object({
     job_id: z.string(),
@@ -31,6 +36,10 @@ export const agentEdit = createTool({
   execute: async (context) => {
     const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
     const job = await client.agentEdit(context);
+    if (context.callback_url) {
+      // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
+      return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, ai_credits_used: undefined, agent_response: undefined, project_changed: undefined, error: undefined };
+    }
     const final = await client.pollJob(job.job_id);
     const result = final.result ?? {};
     const status = result.status as 'success' | 'partial' | 'failed' | undefined;

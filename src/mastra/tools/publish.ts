@@ -12,6 +12,11 @@ export const publish = createTool({
     media_type: z.enum(['Video', 'Audio']).default('Video'),
     resolution: z.enum(['480p', '720p', '1080p', '1440p', '4K']).default('1080p').describe('Resolution — Video only. Ignored for Audio.'),
     access_level: z.enum(['public', 'unlisted', 'drive', 'private']).optional().describe('Access level. Defaults to drive settings. May return 403 if requested level is not permitted.'),
+    callback_url: z
+      .string()
+      .url()
+      .optional()
+      .describe('Optional webhook. If set, Descript POSTs the full job result here on completion and the tool returns IMMEDIATELY without polling (best for long renders). If omitted, the tool polls to completion (default).'),
   }),
   outputSchema: z.object({
     job_id: z.string(),
@@ -31,7 +36,12 @@ export const publish = createTool({
       media_type: context.media_type,
       resolution: context.media_type === 'Video' ? context.resolution : undefined,
       access_level: context.access_level,
+      callback_url: context.callback_url,
     });
+    if (context.callback_url) {
+      // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
+      return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, share_url: undefined, download_url: undefined, download_url_expires_at: undefined, error: undefined };
+    }
     const final = await client.pollJob(job.job_id);
     const result = final.result ?? {};
     const status = result.status as 'success' | 'partial' | 'failed' | undefined;

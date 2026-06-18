@@ -206,6 +206,23 @@ export class DescriptClient {
     return this.request(`/projects/${projectId}`, { method: 'GET' });
   }
 
+  /**
+   * Partner API: fetch a published project by its URL slug, including WEBVTT `subtitles`.
+   * Read-only (free). This is the ONLY documented subtitle/transcript path — and it is
+   * post-publish only (the slug comes from a published share URL). Rate limit 1000/hr.
+   */
+  async getPublishedProject(slug: string): Promise<{
+    download_url?: string;
+    download_url_expires_at?: string;
+    project_id?: string;
+    publish_type?: 'video' | 'audio';
+    privacy?: string;
+    metadata?: { title?: string; duration_seconds?: number; duration_formatted?: string; published_at?: string };
+    subtitles?: string;
+  }> {
+    return this.request(`/published_projects/${encodeURIComponent(slug)}`, { method: 'GET' });
+  }
+
   async listJobs(params?: {
     project_id?: string;
     type?: string;

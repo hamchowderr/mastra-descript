@@ -89,6 +89,11 @@ export const importMedia = createTool({
       .boolean()
       .default(false)
       .describe('Skip the pre-flight URL reachability/Range check (only set true if a valid URL is being wrongly rejected)'),
+    callback_url: z
+      .string()
+      .url()
+      .optional()
+      .describe('Optional webhook. If set, Descript POSTs the full job result here on completion and the tool returns IMMEDIATELY without polling (best for long imports). If omitted, the tool polls to completion (default).'),
   }),
   outputSchema: z.object({
     job_id: z.string(),
@@ -116,7 +121,11 @@ export const importMedia = createTool({
       }
     }
     const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
-    const job = await client.importMedia(buildImportPayload(context));
+    const job = await client.importMedia({ ...buildImportPayload(context), callback_url: context.callback_url });
+    if (context.callback_url) {
+      // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
+      return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, media_count: context.media.length, status: undefined, error: undefined };
+    }
     const final = await client.pollJob(job.job_id);
     const status = final.result?.status as 'success' | 'partial' | 'failed' | undefined;
     return {
