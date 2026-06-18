@@ -130,7 +130,7 @@ template-mastra-descript/
 │       │   └── datasets/
 │       │       └── _example.json   # Eval dataset — 8 cases with expectedTool
 │       └── tools/
-│           ├── import-media.ts     # importMedia — async import from URL
+│           ├── import-media.ts     # importMedia — async import from one or more URLs
 │           ├── agent-edit.ts       # agentEdit — Underlord AI edit
 │           ├── publish.ts          # publish — generate shareable link
 │           ├── projects.ts         # listProjects, getProject
@@ -174,7 +174,7 @@ The agent handles three common workflows automatically:
 ### 1. Import → Edit → Publish
 
 ```
-importMedia({ media_url, project_name })   → project_id
+importMedia({ media: [{ url }], project_name })   → project_id  (multiple { url } = multi-clip import)
 agentEdit({ project_id, prompt })          → Underlord edits the project
 publish({ project_id, media_type: 'Video', resolution: '1080p' }) → share_url
 ```
