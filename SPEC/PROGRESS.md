@@ -12,7 +12,9 @@ Empirically verified the Descript API against community claims, via our own agen
 
 **Shipped from findings:** `descript-verify.ts` harness, multi-file import (nhk.2), `/status` healthcheck (nhk.9), URL pre-validation (nhk.6), `cancelJob` tool (nhk.10), tool cost annotations (nhk.11), cheap default model (nhk.7).
 
-**Still open (spend-gated):** per-model cost comparison, plan-approval stall on complex prompts, multitrack publish, WEBVTT subtitle export, import edge cases.
+**Phase 3b (owner-approved, ~9 credits total):** publish=render-only (0 credits) + WEBVTT subtitles live (nhk.8); conversation_id multi-turn confirmed + shipped (ipk); callback_url accepted/URI-validated (nhk.4 sender); **plan-approval stall REPRODUCED** (complex ambiguous edit → success+project_changed:false+plan/clarify response, builds nothing; validates nhk.5).
+
+**Still open:** per-model cost comparison (skipped — default cheap); stall-mitigation confirmation (directive prompts); untestable on this surface — 402 (funded), multitrack (no parallel-track schema), webhook receiver (needs public URL), audio-less/mixed-language (need assets).
 
 ---
 
