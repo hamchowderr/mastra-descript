@@ -1,5 +1,5 @@
 {
-  "name": "template-mastra-descript",
+  "name": "mastra-descript",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "eval": "node --env-file=.env --import tsx/esm scripts/eval.ts",
     "descript:ping": "node --env-file=.env --import tsx/esm scripts/descript-ping.ts",
+    "descript:verify": "node --env-file=.env --import tsx/esm scripts/descript-verify.ts",
     "score:list": "mastra scorers list"
   },
   "keywords": [],
