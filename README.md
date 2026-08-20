@@ -8,7 +8,7 @@
 
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue)](#-license)
 [![Status: v1](https://img.shields.io/badge/status-v1-brightgreen)]()
-[![Node: 22+](https://img.shields.io/badge/node-22%2B-339933?logo=node.js&logoColor=white)](#-getting-started)
+[![Node: 24+](https://img.shields.io/badge/node-24%2B-339933?logo=node.js&logoColor=white)](#-getting-started)
 [![Built on Mastra](https://img.shields.io/badge/built%20on-Mastra-000)](https://mastra.ai)
 [![Powered by Descript API](https://img.shields.io/badge/powered%20by-Descript%20API-7c3aed)](https://docs.descriptapi.com)
 [![Family: mastra-base](https://img.shields.io/badge/family-mastra--base-111)](https://github.com/hamchowderr/mastra-base)
@@ -80,8 +80,9 @@ One message → real jobs run → a shareable result. Here's the **import → ed
 - **✅ Verified against ground truth.** Behavior was checked with a cost-ordered harness against the live API ([`npm run descript:verify`](#-build--test)) — confirming the cost model, refuting false community claims (multi-file works, cancel works, responses aren't truncated), and reproducing the real one (the plan-approval stall — and handling it).
 - **🧩 Built for real workflows.** Multi-file import (N clips → one composition), multi-turn editing (`conversation_id`), webhooks (`callback_url`), pre-flight URL validation, a cheap default model, and a `cancelJob` tool.
 - **🔌 Reachable four ways.** REST, MCP, A2A, and Mastra Studio — out of the box.
-- **🏠 Self-contained stack.** Mastra + Hono + Postgres/pgvector (Supabase) + Dolt, one `docker compose up`. Forked from [`mastra-base`](https://github.com/hamchowderr/mastra-base).
+- **🏠 Self-contained stack.** Mastra + Hono + libSQL/Turso + Dolt, one `docker compose up` — no Docker needed for local dev either, storage defaults to a local `file:` DB. Forked from [`mastra-base`](https://github.com/hamchowderr/mastra-base). Prefer Postgres/pgvector (Supabase)? See [`docs/postgres.md`](docs/postgres.md) for the swap.
 - **🤖 Model choice.** `agentEdit` defaults to the cheap `haiku-4.5-underlord`; Underlord is multi-provider (Claude / Fable / Gemini / GPT) — swap per call.
+- **🖥️ Ad-hoc CLI workspace.** The agent also has a sandboxed workspace running the official `descript-api` CLI (approval-gated `execute_command`) for manual exploration — separate from, and never a substitute for, the 10 cost-tracked tools above.
 
 ---
 
@@ -147,7 +148,7 @@ All async tools accept an optional `callback_url` — set it and the tool return
 
 ## 🚀 Getting started
 
-**Prerequisites:** Node.js 22+ · Docker Desktop (for local Supabase) · a Supabase project · an Anthropic API key (or OpenAI/Google) · a Descript API token ([Settings → API tokens](https://www.descript.com/)).
+**Prerequisites:** Node.js 24+ · an Anthropic API key (or OpenAI/Google) · a Descript API token ([Settings → API tokens](https://www.descript.com/)). No Docker or external database needed for local dev — storage defaults to a local libSQL `file:` DB.
 
 ```bash
 # 1. Clone + install
@@ -156,15 +157,13 @@ npm install
 
 # 2. Configure — every var is documented inline
 cp .env.example .env
-#   Fill in: APP_SECRET, SUPABASE_*, ANTHROPIC_API_KEY, DESCRIPT_API_TOKEN
+#   Fill in: APP_SECRET, ANTHROPIC_API_KEY, DESCRIPT_API_TOKEN
+#   (TURSO_DATABASE_URL defaults to a local file: DB — leave unset for local dev)
 
 # 3. Verify your Descript token BEFORE anything else
 npm run descript:ping        # → ✓ Descript API is reachable … (api_version v1)
 
-# 4. Boot local Supabase (first run only)
-npx supabase start
-
-# 5. Run — Mastra Studio at http://localhost:4111
+# 4. Run — Mastra Studio at http://localhost:4111
 npm run dev
 ```
 
@@ -221,9 +220,10 @@ src/
    ├─ agents/_example.ts          descriptAgent — the Descript automation agent
    ├─ lib/
    │  ├─ descript-client.ts       Typed REST client — all endpoints + polling + 402 parsing
+   │  ├─ descript-workspace.ts    Sandboxed Workspace exposing the descript-api CLI (ad-hoc only)
    │  ├─ cost-meter.ts            Session-cumulative AI-credit + media-second meter
-   │  ├─ memory.ts                Resource-scoped working memory
-   │  └─ aimock.ts · supabase.ts  Mock routing · Supabase client
+   │  ├─ memory.ts                Resource-scoped working memory + shared LibSQLStore/LibSQLVector
+   │  └─ aimock.ts                Mock routing
    ├─ tools/                      importMedia · agentEdit · publish · projects ·
    │                              jobs (get/list/cancel) · published · cost
    └─ scorers/                    toolCallAccuracy + answerRelevancy + dataset
@@ -232,20 +232,21 @@ scripts/
 ├─ descript-verify.ts             Cost-ordered verification harness
 └─ eval.ts                        Tool-call-accuracy eval gate
 fixtures/ · aimock.json           AIMock fixtures + config (deterministic eval)
-Dockerfile · docker-compose.yml   node:22-slim runtime + self-contained stack
+Dockerfile · docker-compose.yml   node:24-slim runtime + self-contained stack
 ```
 
 ### Stack
 
 | Layer | Technology |
 |---|---|
-| Agent framework | [Mastra](https://mastra.ai) — `@mastra/core`, `memory`, `evals`, `duckdb`, `observability`, `auth`, `mcp`, `editor`, `pg` |
+| Agent framework | [Mastra](https://mastra.ai) — `@mastra/core`, `memory`, `evals`, `libsql`, `duckdb`, `observability`, `auth`, `mcp`, `editor` |
 | LLM | Claude (Anthropic) — Sonnet 4.6 agent default; Underlord is multi-provider |
 | API server | [Hono](https://hono.dev) (mounted via Mastra) |
-| Database | Postgres + [pgvector](https://github.com/pgvector/pgvector) (local via [Supabase CLI](https://supabase.com/docs/guides/cli)) · [Dolt](https://www.dolthub.com/) for versioned data |
+| Database | [libSQL](https://github.com/tursodatabase/libsql)/[Turso](https://turso.tech) — local `file:` DB, no server or Docker needed (hosted Turso in prod) · [Dolt](https://www.dolthub.com/) for versioned data. Prefer Postgres/pgvector (Supabase)? See [`docs/postgres.md`](docs/postgres.md). |
+| Descript CLI | [`@descript/platform-cli`](https://www.npmjs.com/package/@descript/platform-cli) in a sandboxed `@mastra/core/workspace` — ad-hoc exploration only, not the cost-tracked path |
 | Auth | `@mastra/auth` (HS256 JWT, opt-in via `MASTRA_JWT_SECRET`) |
 | Testing | [Vitest](https://vitest.dev) · [AIMock](https://aimock.copilotkit.dev) · the `descript:verify` harness |
-| Runtime | Docker (`node:22-slim` — DuckDB needs glibc, not musl) |
+| Runtime | Docker (`node:24-slim` — DuckDB needs glibc, not musl; Node 24 is also required by `@descript/platform-cli`) |
 
 ---
 
@@ -277,13 +278,12 @@ The **verification harness** (`descript:verify`) is cost-ordered and safe-by-def
 ## 🔭 Inspect & tune the agent (Mastra Studio)
 
 ```bash
-npx supabase start    # local Supabase — backs memory + traces
-npm run dev           # agent server + Studio → http://localhost:4111
+npm run dev           # agent server + Studio → http://localhost:4111 (storage: local file: DB, no setup needed)
 ```
 
 - 💬 **Chat** with the `descript` agent directly (uses your `ANTHROPIC_API_KEY`)
 - ✏️ **Edit & version the system prompt** live via the Agent Editor
-- 🧠 **Memory & threads** — every conversation, persisted to local Supabase
+- 🧠 **Memory & threads** — every conversation, persisted to the local libSQL DB
 - 🔭 **Traces** — per-run agent / tool / LLM spans
 - 🗂️ **Tools** — browse the 10 Descript tools and their `COST:` tags
 - ✅ **Scorers** — tool-call accuracy + answer relevancy in the Scores view
@@ -315,7 +315,7 @@ This template was built **after** verifying the Descript API against the communi
 - **How do I cap spend?** Set `DESCRIPT_CREDIT_CAP` — `agentEdit` aborts before submit once the session hits it (there's no balance endpoint, so it's cumulative).
 - **Which model does Underlord use?** Defaults to the cheap `haiku-4.5-underlord`. The full enum spans Claude, Fable, Gemini, and GPT — override per `agentEdit` call.
 - **Can I iterate on an edit?** Yes — pass the `conversation_id` from the previous `agentEdit` (with the same `project_id`); Underlord retains the prior turns.
-- **Does it run on Windows?** Yes — Node 22, `npm run dev`. Docker uses `node:22-slim` (DuckDB needs glibc).
+- **Does it run on Windows?** Yes — Node 24, `npm run dev`. Docker uses `node:24-slim` (DuckDB needs glibc).
 - **What if my token is rejected?** `npm run descript:ping` is the canary — a `401 "Could not find token"` means the token is stale/revoked; mint a fresh one in Descript Settings → API tokens.
 
 ---
@@ -333,7 +333,7 @@ Issue tracking runs on **bd (beads)** with Dolt-backed sync — `bd ready` to fi
 - **[Descript](https://www.descript.com/)** — the editor and the API/Underlord this template drives.
 - **[Mastra](https://mastra.ai/)** — the agent framework: agents, memory, evals, observability, MCP, A2A.
 - **[`mastra-base`](https://github.com/hamchowderr/mastra-base)** — the canonical template this forks from.
-- **[Supabase](https://supabase.com/)**, **[Hono](https://hono.dev/)**, and **[Anthropic](https://www.anthropic.com/)** — database, server, and models.
+- **[Turso](https://turso.tech/)**, **[Hono](https://hono.dev/)**, and **[Anthropic](https://www.anthropic.com/)** — database, server, and models.
 
 ---
 

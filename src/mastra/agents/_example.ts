@@ -8,6 +8,7 @@ import { getPublishedSubtitles } from '../tools/published';
 import { getCostTotals } from '../tools/cost';
 import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
 import { createDefaultMemory } from '../lib/memory';
+import { getDescriptWorkspace } from '../lib/descript-workspace';
 
 export const descriptAgent = new Agent({
   id: 'descript',
@@ -57,9 +58,12 @@ Rules:
 - Only agentEdit invokes Underlord (the AI) and spends AI credits. Imports, publishes, reads, and cancels do NOT call Underlord — don't imply they cost AI credits.
 - If agentEdit returns project_changed:false (status "partial" with a stall message), the edit did NOT run — Underlord stalled at plan/brief approval. Tell the user it didn't execute and suggest a more explicit prompt; never report it as done.
 - For "how many credits have I used?" use getCostTotals (a running session total — Descript has no balance endpoint).
-- To iterate on an edit conversationally, pass the conversation_id from the previous agentEdit (with the same project_id) into the next call — Underlord retains the prior turns' context.`,
+- To iterate on an edit conversationally, pass the conversation_id from the previous agentEdit (with the same project_id) into the next call — Underlord retains the prior turns' context.
+
+You also have a sandboxed workspace with the official \`descript-api\` CLI (run it via \`npx descript-api --help\`, \`npx descript-api config list\`, etc.) for ad-hoc/manual exploration only — checking config, poking at a command interactively, or showing a user raw CLI output. Always prefer your typed tools above (importMedia, agentEdit, publish, etc.) for actual work: they track cost and handle rate-limit/quota errors that the raw CLI does not.`,
   tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs, cancelJob, getPublishedSubtitles, getCostTotals },
   memory: createDefaultMemory(),
+  workspace: getDescriptWorkspace(),
   // Shared safety/hygiene baseline — see src/mastra/lib/processors.ts.
   inputProcessors: defaultInputProcessors,
   outputProcessors: defaultOutputProcessors,

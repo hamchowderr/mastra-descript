@@ -1,10 +1,14 @@
-# Self-contained agent stack: Mastra (server + Studio) + Postgres/pgvector + Dolt.
-# One `docker compose up` brings up a complete, portable agent. Deploys as a
-# single Coolify "Docker Compose" resource (only `mastra` gets a public domain;
-# postgres + dolt stay private on the internal network).
+# Self-contained agent stack: Mastra (server + Studio) + Dolt. Mastra storage +
+# vectors run on libSQL (a file: DB on the `libsqldata` volume) — no separate
+# storage service. One `docker compose up` brings up a complete, portable agent.
+# Deploys as a single Coolify "Docker Compose" resource (only `mastra` gets a
+# public domain; dolt stays private on the internal network).
+#
+# Prefer Postgres + pgvector (Supabase) for storage instead? That's a code-level
+# swap plus a compose service — see docs/postgres.md.
 #
 # Secrets come from .env / Coolify env (never commit them):
-#   APP_SECRET, POSTGRES_PASSWORD, DOLT_PASSWORD, DESCRIPT_API_TOKEN, and an LLM
+#   APP_SECRET, DOLT_PASSWORD, DESCRIPT_API_TOKEN, and an LLM
 #   key (ANTHROPIC_API_KEY / OPENAI_API_KEY). See .env.example.
 
 services:
@@ -12,22 +16,33 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: mastra
     restart: unless-stopped
-    ports:
-      - "4111:4111" # Coolify assigns the public domain to this service
+    # Only expose on the internal network — Coolify/Traefik routes the public
+    # domain to this service. Do NOT bind a host port here: binding 4111:4111
+    # collides ("address already in use") whenever another agent stack is also
+    # deployed on the same host, and it bypasses Traefik so FQDN routing and
+    # auto-SSL never apply. Local host access is via docker-compose.override.yml.
+    #
+    # `container_name: mastra` removed for the same reason: container names are
+    # global to the Docker host, not namespaced per compose project, so a second
+    # stack claiming `mastra` collides even once the ports are correct.
+    expose:
+      - "4111"
     env_file:
       - .env
     environment:
       - NODE_ENV=production
-      # Mastra memory + RAG → the postgres service (private, internal network)
-      - SUPABASE_DB_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      # Mastra storage + vectors → libSQL file: DB on the persistent libsqldata
+      # volume (absolute path so it lands on the mount, not the ephemeral layer).
+      - TURSO_DATABASE_URL=file:/app/data/mastra.db
       # Versioned business data → the dolt service (private, internal network)
       - DOLT_HOST=dolt
       - DOLT_PORT=3306
       - DOLT_USER=root
       - DOLT_PASSWORD=${DOLT_PASSWORD}
       - DOLT_DATABASE=${DOLT_DATABASE:-appdb}
+    volumes:
+      - libsqldata:/app/data # libSQL DB (threads, memory, observability, vectors)
     deploy:
       resources:
         limits:
@@ -36,8 +51,6 @@ services:
         reservations:
           memory: 256M
     depends_on:
-      postgres:
-        condition: service_healthy
       dolt:
         condition: service_healthy
     healthcheck:
@@ -51,23 +64,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  postgres:
-    image: pgvector/pgvector:pg16
-    restart: unless-stopped
-    environment:
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=postgres
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      # enables the `vector` extension on first init
-      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    # no published port → reachable only as `postgres` on the internal network
 
   dolt:
     image: dolthub/dolt-sql-server:latest
@@ -87,5 +83,5 @@ services:
     # no published port → reachable only as `dolt` on the internal network
 
 volumes:
-  pgdata: {}
+  libsqldata: {}
   doltdata: {}

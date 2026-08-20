@@ -133,16 +133,18 @@ In CI, AIMock runs as a Docker container; the CI yml mounts `./fixtures/` and pa
 ## Storage
 
 The Mastra instance uses a composite store:
-- **default domain** → `PostgresStore` (Supabase Postgres via `SUPABASE_DB_URL`)
-- **editor domain** → `PostgresStore` (same connection)
+- **default domain** → `LibSQLStore` (libSQL/Turso via `TURSO_DATABASE_URL` + optional `TURSO_AUTH_TOKEN`) — the shared instance from `src/mastra/lib/memory.ts`'s `getSharedStore()`
+- **editor domain** → the same `LibSQLStore` instance
 - **observability domain** → `DuckDBStore`
 
 All stores require an explicit `id` field:
 ```typescript
-new PostgresStore({ id: 'mastra-storage', connectionString: env.SUPABASE_DB_URL })
+new LibSQLStore({ id: 'mastra-storage', url: env.TURSO_DATABASE_URL })
 ```
 
-`DuckDBStore` requires glibc. Do not run it in Alpine-based containers — use `node:22-slim`.
+Prefer Postgres/pgvector (Supabase) instead? See `docs/postgres.md` for the full swap.
+
+`DuckDBStore` requires glibc. Do not run it in Alpine-based containers — use `node:24-slim`.
 
 ---
 
@@ -170,7 +172,7 @@ When adding a new agent:
 - **Never read `process.env` directly** — use `env` from `src/lib/env.ts`
 - **Never construct an AI SDK client before `configureAIMock()`** — AIMock will be bypassed silently
 - **Never set `ANTHROPIC_BASE_URL = AIMOCK_URL` bare** — append `/v1` so requests land at `/v1/messages`
-- **Never change the Dockerfile base to `node:22-alpine`** — DuckDB will SIGSEGV. Use `node:22-slim`.
+- **Never change the Dockerfile base to `node:24-alpine`** — DuckDB will SIGSEGV. Use `node:24-slim`.
 - **Never add a new env var without updating `.env.example`** — new devs won't know it exists
 - **Never skip the Zod schema for a new env var** — process will start with undefined values silently
 - **Never import from `src/mastra/` in `src/lib/`** — creates circular dependency risk
@@ -189,7 +191,7 @@ Stop and confirm with the user before making these changes:
 - Removing or renaming a scorer that's referenced in a dataset JSON
 - Downgrading a Mastra package version
 - Adding a new `domain` to the composite store
-- Any Supabase schema migrations
+- Any storage backend migrations (libSQL/Turso ↔ Postgres/Supabase)
 - Modifying `DESCRIPT_POLL_MAX_ATTEMPTS` or `DESCRIPT_POLL_INTERVAL_MS` defaults
 
 ---
@@ -197,11 +199,10 @@ Stop and confirm with the user before making these changes:
 ## Useful Commands
 
 ```bash
-npm run dev             # Start Studio at localhost:4111
+npm run dev             # Start Studio at localhost:4111 — no Docker needed, storage defaults to a local file: DB
 npm run typecheck       # Verify types before running
 npm run eval            # Run all 8 eval cases; exits 0 on pass, 1 on fail
 npm run descript:ping   # Verify DESCRIPT_API_TOKEN is valid
-npx supabase start      # Start local Supabase (Docker required)
 ```
 
 Eval runs with `USE_AIMOCK=false` hit the real Anthropic + Descript APIs and incur cost. Use `USE_AIMOCK=true` with AIMock running for free deterministic runs during development.
