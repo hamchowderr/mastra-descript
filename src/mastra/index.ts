@@ -15,7 +15,6 @@ if (env.DESCRIPT_HEALTHCHECK_ON_BOOT) {
 // 4. Mastra imports — agents/tools constructed below now see the right base URLs
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
-import { PostgresStore } from '@mastra/pg';
 import { DuckDBStore } from '@mastra/duckdb';
 import { MastraCompositeStore } from '@mastra/core/storage';
 import { Observability, DefaultExporter, SensitiveDataFilter, MastraPlatformExporter } from '@mastra/observability';
@@ -26,6 +25,7 @@ import { descriptAgent } from './agents/_example';
 import { toolCallAccuracyScorer, answerRelevancyScorer } from './scorers/_example.scorers';
 import { doltTools } from './tools/dolt';
 import { ensureDatabase, doltConfigured } from './lib/dolt';
+import { getSharedStore } from './lib/memory';
 
 // Bootstrap the versioned Dolt database on first boot (no-op if Dolt isn't configured).
 if (doltConfigured) {
@@ -43,11 +43,6 @@ const descriptMcp = new MCPServer({
   agents: { descript: descriptAgent },
 });
 
-// One shared Postgres store for both default + editor slots. Two separate
-// instances on the same DB race on first boot creating shared types
-// (mastra_ai_spans) -> 23505. Sharing one instance avoids it.
-const pgStore = new PostgresStore({ id: 'mastra-storage', connectionString: env.SUPABASE_DB_URL });
-
 // JWT auth: when MASTRA_JWT_SECRET is set, gate all /api/* routes AND Studio
 // behind a Bearer JWT signed with the shared secret. `/health` and `/api/auth/*`
 // stay public (so healthchecks and the Studio login screen still work). Leave
@@ -61,10 +56,15 @@ export const mastra = new Mastra({
   agents: { descript: descriptAgent },
   scorers: { toolCallAccuracyScorer, answerRelevancyScorer },
   mcpServers: { descriptMcp },
+  // libSQL is the primary store (default/editor/memory domains + vectors). Local
+  // dev uses a file: DB — no server, no Docker; prod points TURSO_DATABASE_URL at
+  // a libsql:// Turso URL with TURSO_AUTH_TOKEN. Only the observability (OLAP)
+  // domain uses DuckDB, same as before — Studio's Metrics/Logs views need it
+  // specifically. To switch back to Postgres/pgvector (Supabase), see docs/postgres.md.
   storage: new MastraCompositeStore({
     id: 'composite-storage',
-    default: pgStore,
-    editor: pgStore,
+    default: getSharedStore(),
+    editor: getSharedStore(),
     domains: {
       observability: await new DuckDBStore().getStore('observability'),
     },

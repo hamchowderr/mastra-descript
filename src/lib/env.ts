@@ -1,4 +1,19 @@
+import path from 'node:path';
 import { z } from 'zod';
+
+/**
+ * Resolve a relative `file:` libSQL URL to an ABSOLUTE path at load time. Under
+ * `mastra dev` the process cwd differs between module load (package root) and
+ * request handling (the bundled runtime dir), so a bare `file:./mastra.db` would
+ * split reads/writes/deletes across two different files — threads persist to one
+ * and Studio reads the other. Pinning it absolute keeps every op on one DB.
+ */
+function absoluteFileUrl(url: string): string {
+  if (!url.startsWith('file:')) return url;
+  const p = url.slice('file:'.length);
+  if (p.startsWith('/') || path.isAbsolute(p)) return url;
+  return `file:${path.resolve(process.cwd(), p.replace(/^\.\//, '')).replace(/\\/g, '/')}`;
+}
 
 const boolish = z
   .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
@@ -10,13 +25,16 @@ const envSchema = z
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
     APP_SECRET: z.string().min(32, 'APP_SECRET must be at least 32 chars'),
 
-    SUPABASE_URL: z.string().url(),
-    SUPABASE_ANON_KEY: z.string().min(1),
-    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-    SUPABASE_DB_URL: z
-      .string()
-      .url()
-      .refine((v) => v.startsWith('postgres'), 'Must be a postgres:// connection string'),
+    // Storage + vectors run on libSQL/Turso. Local dev uses a file: DB (no
+    // server, no Docker); prod points at a libsql:// Turso URL with an auth
+    // token. To switch back to Postgres/pgvector (Supabase), see docs/postgres.md.
+    TURSO_DATABASE_URL: z.string().default('file:./mastra.db').transform(absoluteFileUrl),
+    TURSO_AUTH_TOKEN: z.string().optional(),
+
+    // Root dir for the Descript CLI workspace sandbox (filesystem + shell) —
+    // it reads/writes files and runs `descript-api` here. Set an absolute path
+    // for a stable location; a relative path is resolved to absolute at load.
+    WORKSPACE_ROOT: z.string().default('./agent-workspace'),
 
     // Dolt (versioned business data) — the compose `dolt` service. Optional so
     // the app boots without Dolt; the Dolt tools error clearly if it's missing.

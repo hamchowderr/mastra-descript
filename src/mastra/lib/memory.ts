@@ -20,16 +20,17 @@
  *                           embedder is **fastembed** — a local ONNX model
  *                           (bge-small-en-v1.5, 384-dim), so recall needs no API
  *                           key and no external embedding spend. Vectors live in
- *                           the same Supabase Postgres via PgVector.
+ *                           the same libSQL/Turso DB via LibSQLVector (native
+ *                           vector search — no extension or extra service).
  *
  * ## Two things to know when calling agents
  *
- * 1. Storage: this factory passes no `storage`, so Memory inherits the Mastra
- *    instance's PostgresStore (Supabase). Postgres supports the `mastra_resources`
- *    table that resource-scoped working memory requires — no extra setup needed.
- *    Semantic recall vectors use a dedicated PgVector on the same database; the
- *    `pgvector` extension must be enabled (the compose stack does this via
- *    docker/postgres-init/01-pgvector.sql).
+ * 1. Storage: this factory passes an explicit `storage: getSharedStore()` — the
+ *    SAME LibSQLStore instance the Mastra instance itself uses (see
+ *    `src/mastra/index.ts`) — rather than relying on Memory's relative-path
+ *    default. That keeps every agent's threads/messages and the main storage
+ *    domain on one DB file instead of splitting across two. To switch the whole
+ *    template to Postgres/pgvector (Supabase) instead, see docs/postgres.md.
  *
  * 2. resourceId is REQUIRED for resource-scoped memory to actually persist per user:
  *
@@ -45,7 +46,7 @@
  */
 
 import { Memory } from '@mastra/memory';
-import { PgVector } from '@mastra/pg';
+import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { fastembed } from '@mastra/fastembed';
 import { env } from '../../lib/env';
 
@@ -66,14 +67,34 @@ export const DEFAULT_WORKING_MEMORY_TEMPLATE = `# User Profile
 `;
 
 /**
- * One shared PgVector pool for semantic-recall embeddings across every agent's
- * Memory. Lazily created so importing this module never opens a connection; a
- * single instance avoids one pool per agent on the same database.
+ * ONE shared libSQL store instance for the whole server — the Mastra instance
+ * (src/mastra/index.ts) and every agent's Memory use THIS so threads/messages
+ * land in a single DB rather than splitting across separate store instances.
  */
-let _vector: PgVector | null = null;
-function memoryVector(): PgVector {
+let _store: LibSQLStore | null = null;
+export function getSharedStore(): LibSQLStore {
+  if (!_store) {
+    _store = new LibSQLStore({
+      id: 'mastra-storage',
+      url: env.TURSO_DATABASE_URL,
+      ...(env.TURSO_AUTH_TOKEN ? { authToken: env.TURSO_AUTH_TOKEN } : {}),
+    });
+  }
+  return _store;
+}
+
+/**
+ * One shared libSQL vector index across all agents' semantic recall (same DB as
+ * the main store — libSQL has native vector search, no separate extension).
+ */
+let _vector: LibSQLVector | null = null;
+function getSharedVector(): LibSQLVector {
   if (!_vector) {
-    _vector = new PgVector({ id: 'memory-vector', connectionString: env.SUPABASE_DB_URL });
+    _vector = new LibSQLVector({
+      id: 'memory-vector',
+      url: env.TURSO_DATABASE_URL,
+      ...(env.TURSO_AUTH_TOKEN ? { authToken: env.TURSO_AUTH_TOKEN } : {}),
+    });
   }
   return _vector;
 }
@@ -88,7 +109,8 @@ export function createDefaultMemory(
   template: string = DEFAULT_WORKING_MEMORY_TEMPLATE,
 ): Memory {
   return new Memory({
-    vector: memoryVector(),
+    storage: getSharedStore(),
+    vector: getSharedVector(),
     embedder: fastembed,
     options: {
       workingMemory: {
