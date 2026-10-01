@@ -79,6 +79,12 @@ Tools surface both. If `result.status === "partial"`, surface this to the user �
 
 When chaining `importMedia → agentEdit`, always wait for `importMedia` to complete (status: "success") before calling `agentEdit`.
 
+Endpoint coverage follows the official OpenAPI spec (`https://docs.descriptapi.com/openapi.json`). Free/sync endpoints wrapped: `GET /agent/models` (`listAgentModels`), `POST /export/transcript` (`exportTranscript` — raw file body; docx returned base64), `GET /search` (`searchDrive`), `POST /edit_in_descript/schema` (`createEditInDescriptUrl`, partner drives only).
+
+Workflows live in `src/mastra/workflows/` and reuse the tools' exported `run*` functions + Zod schemas (e.g. `runImportMedia`, `importMediaInput`) — don't duplicate client logic in steps. Any workflow that spends AI credits must suspend for approval before the `agentEdit` step unless the caller opts out. Register new workflows in `src/mastra/index.ts` (and on the agent if it should run them).
+
+Runtime skills are `agent-workspace/skills/<name>/SKILL.md` (Agent Skills spec; `name` must equal the directory). `agent-workspace/` is otherwise gitignored scratch. These are for the **descript agent at runtime**; `.agents/skills/mastra` + `.mcp.json` (`@mastra/mcp-docs-server`) are for coding agents working on this repo.
+
 ---
 
 ## Scorer Conventions

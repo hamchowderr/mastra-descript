@@ -13,7 +13,9 @@ mastra.duckdb*
 .claude/
 
 # Descript CLI workspace sandbox — ephemeral scratch space, not source
-agent-workspace/
+agent-workspace/*
+# ...except the runtime skills the descript agent discovers via Workspace.skills
+!agent-workspace/skills/
 
 # Beads / Dolt files (added by bd init)
 .dolt/

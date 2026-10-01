@@ -16,6 +16,27 @@ export type DescriptJob = {
   };
 };
 
+export type AgentModelCost = 'low' | 'medium' | 'high';
+
+export type TranscriptFormat = 'txt' | 'markdown' | 'html' | 'rtf' | 'docx' | 'srt';
+
+export type SearchResultType = 'project' | 'video' | 'image' | 'audio' | 'project_folder' | 'media_library_folder' | 'layout_pack';
+
+export type SearchResult = {
+  type: SearchResultType;
+  name: string;
+  url: string;
+  updated_at: string;
+  project_id?: string;
+  asset_id?: string;
+  folder_id?: string;
+  brand_studio_id?: string;
+  location?: 'media_library' | 'project' | 'brand_studio';
+  thumbnail_url?: string;
+  duration?: number;
+  owner?: { id: string; name?: string };
+};
+
 export type DescriptError = {
   status: number;
   code?: string;
@@ -82,7 +103,7 @@ export class DescriptClient {
 
   private async request<T>(
     path: string,
-    init?: RequestInit & { retriesLeft?: number },
+    init?: RequestInit & { retriesLeft?: number; raw?: boolean },
   ): Promise<T> {
     const retriesLeft = init?.retriesLeft ?? this.retries;
     const controller = new AbortController();
@@ -127,6 +148,8 @@ export class DescriptClient {
 
       // 204 No Content
       if (res.status === 204) return undefined as T;
+
+      if (init?.raw) return res as T;
 
       return (await res.json()) as T;
     } finally {
@@ -246,6 +269,82 @@ export class DescriptClient {
     subtitles?: string;
   }> {
     return this.request(`/published_projects/${encodeURIComponent(slug)}`, { method: 'GET' });
+  }
+
+  /** List Underlord models (canonical ids + aliases) accepted by `POST /jobs/agent` `model`, each with a coarse cost tier. */
+  async listAgentModels(): Promise<{
+    availableModels: Array<{ id: string; cost: AgentModelCost }>;
+    aliases: Array<{ id: string; resolvesTo: string; description: string; cost: AgentModelCost }>;
+  }> {
+    return this.request('/agent/models', { method: 'GET' });
+  }
+
+  /**
+   * Export a composition's transcript. Synchronous (not a job) and read-only. The body is the
+   * raw file — text for txt/markdown/html/rtf/srt, binary for docx (returned base64-encoded).
+   */
+  async exportTranscript(payload: {
+    project_id: string;
+    composition_id?: string;
+    format: TranscriptFormat;
+    include_speaker_labels?: 'off' | 'changes' | 'every_paragraph';
+    include_markers?: boolean;
+    timecodes?: {
+      frequency_seconds?: number;
+      on_paragraphs?: boolean;
+      on_speakers?: boolean;
+      on_markers?: boolean;
+      offset_seconds?: number;
+    };
+  }): Promise<{ content: string; encoding: 'utf8' | 'base64'; composition_id?: string; filename?: string }> {
+    const res = await this.request<Response>('/export/transcript', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      raw: true,
+    });
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const filename = disposition.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)?.[1];
+    const composition_id = res.headers.get('X-Composition-Id') ?? undefined;
+    if (payload.format === 'docx') {
+      const buf = Buffer.from(await res.arrayBuffer());
+      return { content: buf.toString('base64'), encoding: 'base64', composition_id, filename };
+    }
+    return { content: await res.text(), encoding: 'utf8', composition_id, filename };
+  }
+
+  /** Search the token's drive: project/folder/media/layout-pack names plus transcripts and composition text. */
+  async search(params: {
+    query: string;
+    type?: SearchResultType[];
+    match?: Array<'name' | 'content'>;
+    owner?: string[];
+    updated_after?: string;
+    updated_before?: string;
+    sort?: 'relevance' | 'newest' | 'oldest';
+    limit?: number;
+  }): Promise<{ results: SearchResult[] }> {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v == null) continue;
+      if (Array.isArray(v)) v.forEach((item) => qs.append(k, String(item)));
+      else qs.append(k, String(v));
+    }
+    return this.request(`/search?${qs.toString()}`, { method: 'GET' });
+  }
+
+  /** Partner API: create a one-time "Edit in Descript" import URL (expires after 3 hours). */
+  async createEditInDescriptUrl(payload: {
+    partner_drive_id: string;
+    project_schema: {
+      schema_version: string;
+      source_id?: string;
+      files: Array<{ uri: string; name?: string; start_offset?: { seconds: number } }>;
+    };
+  }): Promise<{ url: string }> {
+    return this.request('/edit_in_descript/schema', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 
   async listJobs(params?: {

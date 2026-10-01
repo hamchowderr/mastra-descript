@@ -37,6 +37,9 @@ export function getDescriptWorkspace(): Workspace {
           DESCRIPT_API_URL: env.DESCRIPT_BASE_URL,
         },
       }),
+      // Runtime skills (SKILL.md dirs) under WORKSPACE_ROOT/skills — gives the
+      // agent `skill`, `skill_read`, `skill_search` to load playbooks on demand.
+      skills: ['skills'],
       tools: {
         // Deliberate default: this surface can run arbitrary shell commands, so
         // a human confirms before the agent shells out — unlike the typed

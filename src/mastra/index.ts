@@ -22,6 +22,8 @@ import { MastraEditor } from '@mastra/editor';
 import { MCPServer } from '@mastra/mcp';
 import { MastraJwtAuth } from '@mastra/auth';
 import { descriptAgent } from './agents/_example';
+import { importEditPublishWorkflow } from './workflows/import-edit-publish';
+import { transcriptExportWorkflow } from './workflows/transcript-export';
 import { toolCallAccuracyScorer, answerRelevancyScorer } from './scorers/_example.scorers';
 import { doltTools } from './tools/dolt';
 import { ensureDatabase, doltConfigured } from './lib/dolt';
@@ -41,6 +43,7 @@ const descriptMcp = new MCPServer({
   // them directly, spread `...doltTools` into the agent's own `tools`.
   tools: { ...doltTools },
   agents: { descript: descriptAgent },
+  workflows: { transcriptExport: transcriptExportWorkflow },
 });
 
 // JWT auth: when MASTRA_JWT_SECRET is set, gate all /api/* routes AND Studio
@@ -54,6 +57,7 @@ const serverConfig = env.MASTRA_JWT_SECRET
 export const mastra = new Mastra({
   ...(serverConfig ? { server: serverConfig } : {}),
   agents: { descript: descriptAgent },
+  workflows: { importEditPublish: importEditPublishWorkflow, transcriptExport: transcriptExportWorkflow },
   scorers: { toolCallAccuracyScorer, answerRelevancyScorer },
   mcpServers: { descriptMcp },
   // libSQL is the primary store (default/editor/memory domains + vectors). Local
