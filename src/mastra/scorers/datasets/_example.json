@@ -46,6 +46,26 @@
       "expectedTool": "cancelJob"
     },
     {
+      "name": "list underlord models",
+      "input": "Which Underlord models can I use for edits, and which is cheapest?",
+      "expectedTool": "listAgentModels"
+    },
+    {
+      "name": "export transcript as srt",
+      "input": "Export the transcript of project abc123 as an SRT caption file.",
+      "expectedTool": "exportTranscript"
+    },
+    {
+      "name": "search drive by content",
+      "input": "Find the project where we talked about pricing.",
+      "expectedTool": "searchDrive"
+    },
+    {
+      "name": "edit in descript link",
+      "input": "Make an Edit in Descript link for https://example.com/interview.mp4 so my client can import it.",
+      "expectedTool": "createEditInDescriptUrl"
+    },
+    {
       "name": "delete a project - no tool available",
       "input": "Delete project abc123 permanently.",
       "expectedTool": null

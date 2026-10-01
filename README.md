@@ -82,7 +82,7 @@ One message → real jobs run → a shareable result. Here's the **import → ed
 - **🔌 Reachable four ways.** REST, MCP, A2A, and Mastra Studio — out of the box.
 - **🏠 Self-contained stack.** Mastra + Hono + libSQL/Turso + Dolt, one `docker compose up` — no Docker needed for local dev either, storage defaults to a local `file:` DB. Forked from [`mastra-base`](https://github.com/hamchowderr/mastra-base). Prefer Postgres/pgvector (Supabase)? See [`docs/postgres.md`](docs/postgres.md) for the swap.
 - **🤖 Model choice.** `agentEdit` defaults to the cheap `haiku-4.5-underlord`; Underlord is multi-provider (Claude / Fable / Gemini / GPT) — swap per call.
-- **🖥️ Ad-hoc CLI workspace.** The agent also has a sandboxed workspace running the official `descript-api` CLI (approval-gated `execute_command`) for manual exploration — separate from, and never a substitute for, the 10 cost-tracked tools above.
+- **🖥️ Ad-hoc CLI workspace.** The agent also has a sandboxed workspace running the official `descript-api` CLI (approval-gated `execute_command`) for manual exploration — separate from, and never a substitute for, the 14 cost-tracked tools above.
 
 ---
 
@@ -94,7 +94,7 @@ One message → real jobs run → a shareable result. Here's the **import → ed
                             ▼
             ┌──────────────────────────────────┐
             │         descript agent           │   Claude Sonnet 4.6
-            │   Mastra agent · 10 typed tools  │
+            │ 14 typed tools · 2 workflows · 4 skills │
             └────────────────┬─────────────────┘
                              │ picks tool, fills params
                              ▼
@@ -123,7 +123,7 @@ Descript bills on **two separate meters**, and only one tool touches the AI. Con
 | `agentEdit` | ✅ **yes** — the only AI tool | **AI credits** (`ai_credits_used`) · scales with model + work |
 | `importMedia` | ❌ no | media-seconds (`media_seconds_used`) — transcription |
 | `publish` | ❌ no | render / encode time |
-| `listProjects` · `getProject` · `getJob` · `listJobs` · `cancelJob` · `getPublishedSubtitles` · `getCostTotals` | ❌ no | **free** (read / control) |
+| `listProjects` · `getProject` · `getJob` · `listJobs` · `cancelJob` · `getPublishedSubtitles` · `getCostTotals` · `listAgentModels` · `exportTranscript` · `searchDrive` · `createEditInDescriptUrl` | ❌ no | **free** (read / control) |
 
 `agentEdit` defaults to **`haiku-4.5-underlord`** (≈2 credits for a trivial edit; `automatic` is the priciest). `getCostTotals` returns the running session total, and `DESCRIPT_CREDIT_CAP` is a hard backstop. _Measured: a 10-second import = 10 media-seconds, 0 AI credits; a haiku edit = ~2 credits._
 
@@ -141,6 +141,27 @@ Descript bills on **two separate meters**, and only one tool touches the AI. Con
 | `getJob` / `listJobs` | Poll / list jobs | free |
 | `cancelJob` | Cancel a running job (`DELETE /jobs/{id}`) | free |
 | `getCostTotals` | Running session spend (AI credits + media-seconds) | free |
+| `listAgentModels` | Live Underlord model ids/aliases with cost tiers (`GET /agent/models`) | free |
+| `exportTranscript` | Transcript as txt/markdown/html/rtf/docx/srt — no publish needed (`POST /export/transcript`) | free |
+| `searchDrive` | Search names **and** transcript content across the drive (`GET /search`) | free |
+| `createEditInDescriptUrl` | Partner "Edit in Descript" one-time import link (`POST /edit_in_descript/schema`) | free |
+
+### Workflows
+
+Registered on the Mastra instance (and on the agent, so it can run them):
+
+| Workflow | Steps | Cost |
+|---|---|---|
+| `importEditPublish` | import → **suspend for approval** → Underlord edit → publish; stops at the first failure, never retries | media-seconds + AI credits + render |
+| `transcriptExport` | export transcript → word count / speakers | free |
+
+Resume the approval step with `run.resume({ step: 'approve-edit', resumeData: { approved: true } })` (or from Studio). Pass `auto_approve: true` to skip it.
+
+### Runtime skills
+
+[Mastra workspace skills](https://mastra.ai/docs/sandbox/skills) in `agent-workspace/skills/` — the agent sees their names/descriptions and loads them on demand via the `skill` / `skill_read` / `skill_search` tools:
+
+`descript-cost-safe-editing` · `descript-podcast-polish` · `descript-social-clips` · `descript-transcript-content`
 
 All async tools accept an optional `callback_url` — set it and the tool returns immediately while Descript webhooks the result (best for long jobs); omit it and the tool polls (default).
 
@@ -225,13 +246,17 @@ src/
    │  ├─ memory.ts                Resource-scoped working memory + shared LibSQLStore/LibSQLVector
    │  └─ aimock.ts                Mock routing
    ├─ tools/                      importMedia · agentEdit · publish · projects ·
-   │                              jobs (get/list/cancel) · published · cost
+   │                              jobs (get/list/cancel) · published · cost ·
+   │                              agent-models · export-transcript · search · edit-in-descript
+   ├─ workflows/                  importEditPublish (approval suspend) · transcriptExport
    └─ scorers/                    toolCallAccuracy + answerRelevancy + dataset
 scripts/
 ├─ descript-ping.ts               Auth canary (GET /status)
 ├─ descript-verify.ts             Cost-ordered verification harness
 └─ eval.ts                        Tool-call-accuracy eval gate
 fixtures/ · aimock.json           AIMock fixtures + config (deterministic eval)
+agent-workspace/skills/           Runtime SKILL.md skills loaded by the descript agent
+.mcp.json · .agents/skills/mastra Dev-time Mastra docs MCP server + Mastra coding skill
 Dockerfile · docker-compose.yml   node:24-slim runtime + self-contained stack
 ```
 
@@ -285,7 +310,7 @@ npm run dev           # agent server + Studio → http://localhost:4111 (storage
 - ✏️ **Edit & version the system prompt** live via the Agent Editor
 - 🧠 **Memory & threads** — every conversation, persisted to the local libSQL DB
 - 🔭 **Traces** — per-run agent / tool / LLM spans
-- 🗂️ **Tools** — browse the 10 Descript tools and their `COST:` tags
+- 🗂️ **Tools** — browse the 14 Descript tools and their `COST:` tags
 - ✅ **Scorers** — tool-call accuracy + answer relevancy in the Scores view
 
 ---
@@ -304,7 +329,8 @@ This template was built **after** verifying the Descript API against the communi
 
 - 🪝 **Webhook receiver route** — `callback_url` is wired on every async tool; ship a reference receiver endpoint to verify delivery end-to-end.
 - 🎚️ **Multitrack** — the documented import schema is sequential-clip only; track parallel-track support as Descript's API grows.
-- 📝 **Recipes** — named workflows (podcast assembly, filler removal, highlight reel) on top of the raw tools.
+- 📤 **Direct upload** — use import `upload_urls` to push local files instead of public URLs.
+- 📝 **More workflows** — highlight-reel / batch-repurpose pipelines on top of the new skills.
 
 ---
 
