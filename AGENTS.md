@@ -67,7 +67,7 @@ Tools used only by one agent can live inline. Shared tools go in `src/mastra/too
 
 The Descript API is **async and job-based**. Every mutation (importMedia, agentEdit, publish) returns a job ID. The tools in `src/mastra/tools/` handle polling automatically via `DescriptClient.pollJob()` — they do not return until the job is done (unless `callback_url` is set, in which case they return immediately and Descript webhooks the result).
 
-Cost model: **only `agentEdit` spends AI credits** (it invokes Underlord). `importMedia` spends media-seconds (transcription); `publish` spends render time; reads/`cancelJob` are free. Each tool's description carries a `COST:` tag, and `getCostTotals` reports the running session total. `agentEdit` defaults to the cheap `haiku-4.5-underlord` model and accepts `conversation_id` for multi-turn editing.
+Cost model: **only `agentEdit` spends AI credits** (it invokes Underlord). `importMedia` spends media-seconds (transcription); `publish` spends render time; reads/`cancelJob` are free. Each tool's description carries a `COST:` tag, and `getCostTotals` reports the running session total. `agentEdit` defaults to `DESCRIPT_AGENT_MODEL` (`claude-haiku-4.5`, the low-cost tier) and accepts `conversation_id` for multi-turn editing. Model ids change as Descript launches/retires models — `GET /agent/models` (`listAgentModels`) is the source of truth; never hardcode a model enum.
 
 A job has two status fields:
 - Top-level `job_state`: `"running"` | `"stopped"`

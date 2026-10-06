@@ -6,7 +6,7 @@ import { env } from '../../lib/env';
 export const getPublishedSubtitles = createTool({
   id: 'getPublishedSubtitles',
   description:
-    'Fetch WEBVTT subtitles (plus title/duration) for a PUBLISHED Descript project by its share-URL slug. This is the only documented subtitle/transcript path and works POST-PUBLISH only — the slug is the last path segment of a published share URL (e.g. "abc123" from web.descript.com/view/abc123). COST: free — read-only.',
+    'Fetch WEBVTT subtitles (plus title/duration) for a PUBLISHED Descript project by its share-URL slug. Works POST-PUBLISH only — for captions on any project (no publish needed), prefer exportTranscript with format "srt" — the slug is the last path segment of a published share URL (e.g. "abc123" from web.descript.com/view/abc123). COST: free — read-only.',
   inputSchema: z.object({
     published_slug: z
       .string()

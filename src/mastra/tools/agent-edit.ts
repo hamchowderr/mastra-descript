@@ -11,9 +11,9 @@ export const agentEditInput = z.object({
   composition_id: z.string().optional().describe('UUID, 5-char short ID, or project URL of a specific composition (requires project_id)'),
   model: z
     .string()
-    .default('haiku-4.5-underlord')
+    .optional()
     .describe(
-      'Underlord model id or alias. Defaults to haiku-4.5-underlord, the cheapest (about 2 AI credits for a trivial edit, verified). The catalog changes over time: call listAgentModels for live ids/aliases and cost tiers. Override with a stronger model only for complex edits.',
+      'Underlord model id or alias (e.g. "claude-haiku-4.5", "claude-opus"). Omit to use the configured default (DESCRIPT_AGENT_MODEL, claude-haiku-4.5 — the low-cost tier). The catalog changes as models launch and retire: call listAgentModels for live ids/aliases and cost tiers. Override with a stronger model only for complex edits.',
     ),
   callback_url: z
     .string()
@@ -35,6 +35,8 @@ export const agentEditOutput = z.object({
   agent_response: z.string().optional(),
   project_changed: z.boolean().optional(),
   conversation_id: z.string().optional().describe('Pass this back as conversation_id on the next agentEdit to continue this Underlord session.'),
+  resolved_model: z.string().optional().describe('Canonical model id that actually ran (reports "auto" for auto requests).'),
+  media_seconds_used: z.number().optional().describe('Media-seconds consumed by the edit (e.g. generated audio/video), if any.'),
   error: z.string().optional(),
 });
 
@@ -42,17 +44,19 @@ export async function runAgentEdit(context: z.infer<typeof agentEditInput>): Pro
   // Guardrail: abort before spending if this session already hit DESCRIPT_CREDIT_CAP.
   costMeter.assertCreditCap();
   const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
-  const job = await client.agentEdit(context);
+  const job = await client.agentEdit({ ...context, model: context.model ?? env.DESCRIPT_AGENT_MODEL });
   if (context.callback_url) {
     // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
-    return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, ai_credits_used: undefined, agent_response: undefined, project_changed: undefined, conversation_id: undefined, error: undefined };
+    return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, ai_credits_used: undefined, agent_response: undefined, project_changed: undefined, conversation_id: undefined, resolved_model: undefined, media_seconds_used: undefined, error: undefined };
   }
   const final = await client.pollJob(job.job_id);
   const result = final.result ?? {};
   const apiStatus = result.status as 'success' | 'partial' | 'failed' | undefined;
   const aiCredits = typeof result.ai_credits_used === 'number' ? result.ai_credits_used : undefined;
   const projectChanged = typeof result.project_changed === 'boolean' ? result.project_changed : undefined;
+  const mediaSeconds = typeof result.media_seconds_used === 'number' ? result.media_seconds_used : undefined;
   costMeter.addCredits(aiCredits);
+  costMeter.addMediaSeconds(mediaSeconds);
   // nhk.5: Underlord can report success while project_changed=false — it stalled at the
   // creative-brief/plan-approval step and built nothing. Surface that as a distinct non-success.
   const stalled = apiStatus !== 'failed' && projectChanged === false;
@@ -65,6 +69,8 @@ export async function runAgentEdit(context: z.infer<typeof agentEditInput>): Pro
     agent_response: typeof result.agent_response === 'string' ? result.agent_response : undefined,
     project_changed: projectChanged,
     conversation_id: typeof result.conversation_id === 'string' ? result.conversation_id : undefined,
+    resolved_model: typeof result.resolved_model === 'string' ? result.resolved_model : undefined,
+    media_seconds_used: mediaSeconds,
     error:
       apiStatus === 'failed'
         ? String(result.error ?? 'Agent edit failed')

@@ -10,7 +10,7 @@ description: Use before any agentEdit (Underlord) call, when the user asks about
 ## Before calling agentEdit
 
 1. Make sure the project exists and any import finished with `status: "success"`.
-2. Default model is `haiku-4.5-underlord` (cheapest, about 2 credits for a trivial edit). Only switch models when the user asks for a complex edit or names a model. If you switch, call `listAgentModels` first and pick the lowest `cost` tier that fits; never invent a model id.
+2. Default model is `claude-haiku-4.5` (the low-cost tier; set by `DESCRIPT_AGENT_MODEL`), so omit `model` unless you need another. Only switch models when the user asks for a complex edit or names a model. If you switch, call `listAgentModels` first and pick the lowest `cost` tier that fits; never invent a model id.
 3. Write ONE explicit, executable prompt. Underlord stalls (project_changed: false) on vague prompts that need a plan/brief approval. Good prompts state the action, the scope, and that it should apply the changes now, e.g. "Remove all filler words (um, uh, like) and shorten pauses longer than 1s across the whole composition. Apply the edits directly; do not ask for confirmation."
 4. For multi-step edits on one project, chain calls with the previous `conversation_id` instead of re-explaining context.
 5. For bulk/batch work (several projects or several edits), state the plan and the number of agentEdit calls to the user before running them, or use the `importEditPublish` workflow, which suspends for approval before spending credits.
