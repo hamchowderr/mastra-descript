@@ -3,12 +3,13 @@ import { z } from 'zod';
 import { importMediaInput, importMediaOutput, runImportMedia } from '../tools/import-media';
 import { agentEditInput, agentEditOutput, runAgentEdit } from '../tools/agent-edit';
 import { publishInput, publishOutput, runPublish } from '../tools/publish';
+import { env } from '../../lib/env';
 
 const pipelineInput = z.object({
   media_urls: z.array(z.string().url()).min(1).describe('Public media URLs to import into one new project'),
   project_name: z.string().min(1),
   edit_prompt: z.string().min(1).describe('Explicit Underlord prompt, e.g. "Remove filler words... Apply directly."'),
-  model: z.string().optional().describe('Underlord model id/alias (default: cheapest). See listAgentModels.'),
+  model: z.string().optional().describe('Underlord model id/alias (default: DESCRIPT_AGENT_MODEL, claude-haiku-4.5). See listAgentModels.'),
   media_type: z.enum(['Video', 'Audio']).default('Video'),
   resolution: z.enum(['480p', '720p', '1080p', '1440p', '4K']).default('1080p'),
   auto_approve: z.boolean().default(false).describe('Skip the human approval pause before the credit-spending edit'),
@@ -70,7 +71,7 @@ const approvalStep = createStep({
         reason: 'The next step runs Underlord (agentEdit) and spends AI credits. Resume with { approved: true } to continue.',
         project_url: inputData.project_url,
         edit_prompt: inputData.input.edit_prompt,
-        model: inputData.input.model ?? 'haiku-4.5-underlord',
+        model: inputData.input.model ?? env.DESCRIPT_AGENT_MODEL,
       }) as never;
     }
     if (!resumeData.approved) {

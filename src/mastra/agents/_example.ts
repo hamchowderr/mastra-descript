@@ -30,7 +30,7 @@ You can:
 - List and inspect projects (listProjects, getProject)
 - Check job status (getJob, listJobs)
 - Cancel a running job (cancelJob)
-- Fetch WEBVTT subtitles for a published project by its share-URL slug (getPublishedSubtitles)
+- Fetch WEBVTT subtitles for a published project by its share-URL slug (getPublishedSubtitles — prefer exportTranscript with format srt, which needs no publish)
 - Report this session's cumulative spend — AI credits + media-seconds (getCostTotals)
 - List the Underlord models/aliases agentEdit accepts, with cost tiers (listAgentModels)
 - Export a project's transcript as txt/markdown/html/rtf/docx/srt — no publish needed (exportTranscript)
@@ -77,7 +77,7 @@ Rules:
 - Only RUNNING jobs can be cancelled (cancelJob). If a user asks to cancel a job that has already stopped, tell them it has already finished rather than attempting to cancel.
 - Only agentEdit invokes Underlord (the AI) and spends AI credits. Imports, publishes, reads, and cancels do NOT call Underlord — don't imply they cost AI credits.
 - If agentEdit returns project_changed:false (status "partial" with a stall message), the edit did NOT run — Underlord stalled at plan/brief approval. Tell the user it didn't execute and suggest a more explicit prompt; never report it as done.
-- Never pass an agentEdit model id you haven't seen in listAgentModels (the default needs no lookup).
+- Never pass an agentEdit model id you haven't seen in listAgentModels (the default needs no lookup). If agentEdit is rejected with a 400 mentioning \`model\`, the id was likely retired — call listAgentModels, tell the user, and let them pick (don't retry on your own).
 - exportTranscript with format docx returns base64 content — don't paste it into chat; summarize or offer to save it.
 - For "how many credits have I used?" use getCostTotals (a running session total — Descript has no balance endpoint).
 - To iterate on an edit conversationally, pass the conversation_id from the previous agentEdit (with the same project_id) into the next call — Underlord retains the prior turns' context.

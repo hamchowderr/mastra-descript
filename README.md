@@ -57,7 +57,7 @@ One message → real jobs run → a shareable result. Here's the **import → ed
     status: success · media_seconds_used: 42 · ai_credits_used: none
     project_id: 3e27c396-…
 
-→ agentEdit({ project_id, prompt: "Remove all filler words", model: "haiku-4.5-underlord" })
+→ agentEdit({ project_id, prompt: "Remove all filler words", model: "claude-haiku-4.5" })
     status: success · project_changed: true · ai_credits_used: 6
     conversation_id: 671a4425-…   ← pass back to keep iterating
 
@@ -81,7 +81,7 @@ One message → real jobs run → a shareable result. Here's the **import → ed
 - **🧩 Built for real workflows.** Multi-file import (N clips → one composition), multi-turn editing (`conversation_id`), webhooks (`callback_url`), pre-flight URL validation, a cheap default model, and a `cancelJob` tool.
 - **🔌 Reachable four ways.** REST, MCP, A2A, and Mastra Studio — out of the box.
 - **🏠 Self-contained stack.** Mastra + Hono + libSQL/Turso + Dolt, one `docker compose up` — no Docker needed for local dev either, storage defaults to a local `file:` DB. Forked from [`mastra-base`](https://github.com/hamchowderr/mastra-base). Prefer Postgres/pgvector (Supabase)? See [`docs/postgres.md`](docs/postgres.md) for the swap.
-- **🤖 Model choice.** `agentEdit` defaults to the cheap `haiku-4.5-underlord`; Underlord is multi-provider (Claude / Fable / Gemini / GPT) — swap per call.
+- **🤖 Model choice.** `agentEdit` defaults to the low-cost `claude-haiku-4.5` (override with `DESCRIPT_AGENT_MODEL`); Underlord is multi-provider (Claude / Fable / Gemini / GPT) — `listAgentModels` returns the live catalog with cost tiers, swap per call.
 - **🖥️ Ad-hoc CLI workspace.** The agent also has a sandboxed workspace running the official `descript-api` CLI (approval-gated `execute_command`) for manual exploration — separate from, and never a substitute for, the 14 cost-tracked tools above.
 
 ---
@@ -125,7 +125,7 @@ Descript bills on **two separate meters**, and only one tool touches the AI. Con
 | `publish` | ❌ no | render / encode time |
 | `listProjects` · `getProject` · `getJob` · `listJobs` · `cancelJob` · `getPublishedSubtitles` · `getCostTotals` · `listAgentModels` · `exportTranscript` · `searchDrive` · `createEditInDescriptUrl` | ❌ no | **free** (read / control) |
 
-`agentEdit` defaults to **`haiku-4.5-underlord`** (≈2 credits for a trivial edit; `automatic` is the priciest). `getCostTotals` returns the running session total, and `DESCRIPT_CREDIT_CAP` is a hard backstop. _Measured: a 10-second import = 10 media-seconds, 0 AI credits; a haiku edit = ~2 credits._
+`agentEdit` defaults to **`claude-haiku-4.5`** (low cost tier; ≈2 credits for a trivial haiku edit when measured; `auto` is medium). Set `DESCRIPT_AGENT_MODEL` to change the default. `getCostTotals` returns the running session total, and `DESCRIPT_CREDIT_CAP` is a hard backstop. _Measured: a 10-second import = 10 media-seconds, 0 AI credits; a haiku edit = ~2 credits._
 
 ---
 
@@ -339,7 +339,7 @@ This template was built **after** verifying the Descript API against the communi
 - **Does it use the Descript MCP?** No — it wraps the **REST API** (`descriptapi.com/v1`) with a bearer token. The MCP (`/v2/mcp`) is OAuth-only and where most disconnect/401 complaints come from; the REST surface is the headless one.
 - **Will an API call burn AI credits?** Only `agentEdit` (Underlord) spends AI credits. Imports cost media-seconds; publishes cost render time; reads and `cancelJob` are free. `getCostTotals` shows the running total.
 - **How do I cap spend?** Set `DESCRIPT_CREDIT_CAP` — `agentEdit` aborts before submit once the session hits it (there's no balance endpoint, so it's cumulative).
-- **Which model does Underlord use?** Defaults to the cheap `haiku-4.5-underlord`. The full enum spans Claude, Fable, Gemini, and GPT — override per `agentEdit` call.
+- **Which model does Underlord use?** Defaults to the low-cost `claude-haiku-4.5` (`DESCRIPT_AGENT_MODEL`). The catalog spans Claude, Fable, Gemini, GPT and more and changes over time — `listAgentModels` (`GET /agent/models`) is the source of truth; override per `agentEdit` call. The job reports the model that actually ran as `resolved_model`.
 - **Can I iterate on an edit?** Yes — pass the `conversation_id` from the previous `agentEdit` (with the same `project_id`); Underlord retains the prior turns.
 - **Does it run on Windows?** Yes — Node 24, `npm run dev`. Docker uses `node:24-slim` (DuckDB needs glibc).
 - **What if my token is rejected?** `npm run descript:ping` is the canary — a `401 "Could not find token"` means the token is stale/revoked; mint a fresh one in Descript Settings → API tokens.

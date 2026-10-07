@@ -131,7 +131,7 @@ export class DescriptClient {
       }
 
       if (!res.ok) {
-        let body: { message?: string; code?: string } | string;
+        let body: { message?: string; code?: string; details?: Array<{ message?: string }> } | string;
         try {
           body = await res.json();
         } catch {
@@ -140,6 +140,11 @@ export class DescriptClient {
         let message = typeof body === 'string'
           ? body
           : body.message ?? `Descript API ${res.status}`;
+        // 400 validation errors (Hapi/Joi) carry the specifics in details[] — e.g. a retired `model` id.
+        if (typeof body !== 'string' && Array.isArray(body.details)) {
+          const details = body.details.map((d) => d?.message).filter((m): m is string => typeof m === 'string');
+          if (details.length > 0) message = `${message}: ${details.join('; ')}`;
+        }
         // 402 = out of AI credits. Ian Gray reported the body carries "X required, Y available";
         // exact shape is unconfirmed, so parse defensively into a clear, actionable message.
         if (res.status === 402) message = formatPaymentRequired(body, message);
