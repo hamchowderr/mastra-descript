@@ -5,9 +5,10 @@ import { env } from '../../lib/env';
 
 export const listProjects = createTool({
   id: 'listProjects',
-  description: 'List Descript projects accessible to the current API token. Supports filtering by name, creator, and date range, plus sorting and pagination. COST: free — read-only, no AI credits or media minutes.',
+  description: 'List Descript projects accessible to the current API token. Supports filtering by name, folder, creator, and date range, plus sorting and pagination. COST: free — read-only, no AI credits or media minutes.',
   inputSchema: z.object({
     name: z.string().optional().describe('Substring filter on project name (case-insensitive)'),
+    folder_path: z.string().optional().describe('Only projects directly inside this folder, e.g. "Clients/Acme/Videos" ("/" separates nested folders)'),
     created_by: z.string().optional().describe('UUID of creator, or "me" for the current user'),
     created_after: z.string().optional().describe('ISO 8601 datetime'),
     created_before: z.string().optional().describe('ISO 8601 datetime'),

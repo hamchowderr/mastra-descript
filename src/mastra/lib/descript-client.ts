@@ -188,8 +188,16 @@ export class DescriptClient {
     project_name?: string;
     team_access?: 'edit' | 'comment' | 'view' | 'none';
     folder_name?: string;
+    /** New projects only. `Personal`, `General`, or a custom workspace name (case-insensitive; unknown → 404). */
+    workspace_name?: string;
     add_media: Record<string, { url?: string; content_type?: string; file_size?: number; language?: string }>;
-    add_compositions?: Array<{ name: string; clips: Array<{ media: string }> }>;
+    add_compositions?: Array<{
+      name?: string;
+      /** Pixels; Descript defaults to 1920×1080. */
+      width?: number;
+      height?: number;
+      clips: Array<{ media: string; mute?: boolean }>;
+    }>;
     callback_url?: string;
   }): Promise<{ job_id: string; drive_id: string; project_id: string; project_url: string; upload_urls?: Record<string, { upload_url: string; asset_id: string; artifact_id: string }> }> {
     return this.request('/jobs/import/project_media', {
@@ -231,6 +239,8 @@ export class DescriptClient {
 
   async listProjects(params?: {
     name?: string;
+    /** Only projects directly inside this folder, e.g. "Clients/Acme/Videos". */
+    folder_path?: string;
     created_by?: string;
     created_after?: string;
     created_before?: string;
