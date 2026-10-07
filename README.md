@@ -133,7 +133,7 @@ Descript bills on **two separate meters**, and only one tool touches the AI. Con
 
 | Tool | Does | Cost |
 |---|---|---|
-| `importMedia` | Import one or more URLs into a project (N clips → one composition); vertical/square via `width`/`height`; `workspace_name` + `folder_name` placement; pre-validates URLs | media-seconds |
+| `importMedia` | Import one or more URLs **or local workspace files** (direct upload) into a project (N clips → one composition); vertical/square via `width`/`height`; `workspace_name` + `folder_name` placement; pre-validates URLs | media-seconds |
 | `agentEdit` | Natural-language edit via Underlord; multi-turn via `conversation_id` | **AI credits** |
 | `publish` | Render a shareable video/audio link | render time |
 | `getPublishedSubtitles` | Fetch WEBVTT subtitles for a published project | free |

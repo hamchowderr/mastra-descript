@@ -1,11 +1,17 @@
+import { realpath, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { DescriptClient } from '../lib/descript-client';
+import { DescriptClient, uploadToSignedUrl } from '../lib/descript-client';
 import { costMeter } from '../lib/cost-meter';
 import { env } from '../../lib/env';
 
 const mediaItem = z.object({
-  url: z.string().url().describe('Publicly accessible URL to the media file (MP4, MOV, WAV, FLAC, AAC, MP3)'),
+  url: z.string().url().optional().describe('Publicly accessible URL to the media file (MP4, MOV, WAV, FLAC, AAC, MP3). Provide exactly one of url or file_path.'),
+  file_path: z
+    .string()
+    .optional()
+    .describe('A local file to upload directly (no public URL needed), relative to the agent workspace folder (WORKSPACE_ROOT, default ./agent-workspace), e.g. "uploads/interview.mp4". Files outside that folder are rejected. Formats: mp4, mov, wav, flac, aac, m4a, mp3. Provide exactly one of url or file_path.'),
   language: z.string().default('en').describe('ISO 639-1 language code of the audio/video for transcription'),
   mute: z
     .boolean()
@@ -19,8 +25,46 @@ const mediaItem = z.object({
  * media key, in array order. Kept separate from `execute` so it's unit-testable
  * without hitting the API (a real import consumes media minutes).
  */
+/** Media accepted by Descript's import, by extension (spec: MP4, MOV, WAV, FLAC, AAC, MP3; m4a is AAC). */
+export const UPLOAD_CONTENT_TYPES: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  '.aac': 'audio/aac',
+  '.m4a': 'audio/mp4',
+  '.mp3': 'audio/mpeg',
+};
+
+/**
+ * Resolve a model-supplied file path to a real file INSIDE `root`, or throw. The agent picks
+ * the path, so this is the guard against a prompt steering it into uploading e.g. `.env`:
+ * resolves symlinks on both sides, rejects anything that lands outside root, non-files,
+ * empty files and unsupported extensions.
+ */
+export async function resolveUploadFile(filePath: string, root: string): Promise<{ absPath: string; content_type: string; file_size: number }> {
+  const realRoot = await realpath(root).catch(() => {
+    throw new Error(`Upload folder ${root} does not exist — create it and put the file there (WORKSPACE_ROOT).`);
+  });
+  const candidate = path.resolve(realRoot, filePath);
+  const absPath = await realpath(candidate).catch(() => {
+    throw new Error(`File not found in the agent workspace: ${filePath}`);
+  });
+  if (absPath !== realRoot && !absPath.startsWith(realRoot + path.sep)) {
+    throw new Error(`Refusing to upload ${filePath}: only files inside the agent workspace folder can be uploaded.`);
+  }
+  const info = await stat(absPath);
+  if (!info.isFile()) throw new Error(`${filePath} is not a file.`);
+  if (info.size === 0) throw new Error(`${filePath} is empty.`);
+  const content_type = UPLOAD_CONTENT_TYPES[path.extname(absPath).toLowerCase()];
+  if (!content_type) {
+    throw new Error(`Unsupported file type for ${filePath} — use one of: ${Object.keys(UPLOAD_CONTENT_TYPES).join(', ')}`);
+  }
+  return { absPath, content_type, file_size: info.size };
+}
+
 export function buildImportPayload(input: {
-  media: Array<{ url: string; language?: string; mute?: boolean }>;
+  media: Array<{ url?: string; upload?: { content_type: string; file_size: number }; language?: string; mute?: boolean }>;
   project_name?: string;
   project_id?: string;
   team_access?: 'edit' | 'comment' | 'view' | 'none';
@@ -30,11 +74,14 @@ export function buildImportPayload(input: {
   width?: number;
   height?: number;
 }) {
-  const add_media: Record<string, { url: string; language: string }> = {};
+  const add_media: Record<string, { url?: string; content_type?: string; file_size?: number; language: string }> = {};
   const clips: Array<{ media: string; mute?: boolean }> = [];
   input.media.forEach((m, i) => {
     const key = `clip${i + 1}`;
-    add_media[key] = { url: m.url, language: m.language ?? 'en' };
+    const language = m.language ?? 'en';
+    add_media[key] = m.upload
+      ? { content_type: m.upload.content_type, file_size: m.upload.file_size, language }
+      : { url: m.url, language };
     clips.push(m.mute ? { media: key, mute: true } : { media: key });
   });
   const size = input.width != null && input.height != null ? { width: input.width, height: input.height } : {};
@@ -158,21 +205,51 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
   }
   const optionError = checkImportOptions(context);
   if (optionError) throw new Error(optionError);
+  const badItem = context.media.findIndex((m) => Boolean(m.url) === Boolean(m.file_path));
+  if (badItem !== -1) throw new Error(`Media item ${badItem + 1}: provide exactly one of url or file_path.`);
   if (!context.skip_url_validation) {
-    const checks = await Promise.all(
-      context.media.map(async (m) => ({ url: m.url, result: await validateMediaUrl(m.url) })),
-    );
+    const urls = context.media.flatMap((m) => (m.url ? [m.url] : []));
+    const checks = await Promise.all(urls.map(async (url) => ({ url, result: await validateMediaUrl(url) })));
     const bad = checks.filter((c) => !c.result.ok);
     if (bad.length > 0) {
       throw new Error(
-        `URL pre-validation failed for ${bad.length} of ${context.media.length} media file(s) — not submitting (saves media minutes):\n` +
+        `URL pre-validation failed for ${bad.length} of ${urls.length} media URL(s) — not submitting (saves media minutes):\n` +
           bad.map((b) => `  • ${b.url} — ${(b.result as { reason: string }).reason}`).join('\n') +
           '\nFix the URL(s), or pass skip_url_validation: true to bypass.',
       );
     }
   }
+  // Resolve every local file BEFORE submitting, so a bad path costs nothing.
+  const resolved = await Promise.all(
+    context.media.map(async (m) => (m.file_path ? { ...m, file: await resolveUploadFile(m.file_path, env.WORKSPACE_ROOT) } : { ...m, file: undefined })),
+  );
   const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
-  const job = await client.importMedia({ ...buildImportPayload(context), callback_url: context.callback_url });
+  const job = await client.importMedia({
+    ...buildImportPayload({
+      ...context,
+      media: resolved.map((m) => ({
+        url: m.url,
+        upload: m.file ? { content_type: m.file.content_type, file_size: m.file.file_size } : undefined,
+        language: m.language,
+        mute: m.mute,
+      })),
+    }),
+    callback_url: context.callback_url,
+  });
+  // Direct uploads: PUT each file to its signed URL. The job processes them automatically
+  // once the bytes land. On any failure, cancel the job so it doesn't sit waiting for files.
+  for (const [i, m] of resolved.entries()) {
+    if (!m.file) continue;
+    const key = `clip${i + 1}`;
+    const target = job.upload_urls?.[key]?.upload_url;
+    try {
+      if (!target) throw new Error(`Descript returned no upload URL for ${m.file_path}`);
+      await uploadToSignedUrl(target, m.file.absPath, m.file.file_size);
+    } catch (e) {
+      await client.cancelJob(job.job_id).catch(() => undefined);
+      throw new Error(`Upload of ${m.file_path} failed, import job ${job.job_id} cancelled: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   if (context.callback_url) {
     // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
     return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, media_count: context.media.length, media_seconds_used: undefined, status: undefined, error: undefined };
@@ -195,7 +272,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
 export const importMedia = createTool({
   id: 'importMedia',
   description:
-    'Import one or more media files from publicly-accessible URLs into a Descript project. Creates a new project if project_name is provided, or adds to an existing project if project_id is provided. All media are added as clips of a single composition, in the order given; set width/height for vertical (1080×1920) or square compositions, and workspace_name/folder_name to place a new project. Polls until the import job completes. Returns the project_id, project_url, media_count, and final job status. COST: spends media minutes (transcription of the imported media); does NOT invoke Underlord or spend AI credits.',
+    'Import one or more media files into a Descript project — from publicly-accessible URLs, or uploaded directly from local files in the agent workspace (file_path). Creates a new project if project_name is provided, or adds to an existing project if project_id is provided. All media are added as clips of a single composition, in the order given; set width/height for vertical (1080×1920) or square compositions, and workspace_name/folder_name to place a new project. Polls until the import job completes. Returns the project_id, project_url, media_count, and final job status. COST: spends media minutes (transcription of the imported media); does NOT invoke Underlord or spend AI credits.',
   inputSchema: importMediaInput,
   outputSchema: importMediaOutput,
   execute: (context) => runImportMedia(context),

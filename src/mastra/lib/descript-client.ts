@@ -1,3 +1,5 @@
+import { createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
 import { env } from '../../lib/env';
 
 export type DescriptJob = {
@@ -73,6 +75,33 @@ function formatPaymentRequired(body: unknown, fallback: string): string {
   const m = typeof fallback === 'string' ? fallback.match(/(\d+)\D+required\D+(\d+)\D+available/i) : null;
   if (m) return `Out of AI credits — need ${m[1]}, have ${m[2]} (HTTP 402).`;
   return `Out of AI credits (HTTP 402): ${fallback}`;
+}
+
+/**
+ * PUT a local file to a Descript signed upload URL (from `upload_urls` on an import job).
+ * Deliberately NOT routed through DescriptClient.request: the signed URL carries its own
+ * auth, so the bearer token must never be sent there. Streams the file (no full buffering).
+ * Mirrors the official CLI: Content-Type application/octet-stream + explicit Content-Length.
+ */
+export async function uploadToSignedUrl(uploadUrl: string, filePath: string, fileSize: number, timeoutMs = 60 * 60_000): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(fileSize) },
+      body: Readable.toWeb(createReadStream(filePath)) as ReadableStream,
+      // Node requires half-duplex for streamed request bodies.
+      duplex: 'half',
+      signal: controller.signal,
+    } as RequestInit & { duplex: 'half' });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`Upload failed (HTTP ${res.status})${detail ? `: ${detail.slice(0, 300)}` : ''}`);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export class DescriptClient {

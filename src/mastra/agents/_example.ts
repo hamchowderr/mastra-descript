@@ -24,7 +24,7 @@ export const descriptAgent = new Agent({
   instructions: `You are an automation agent for Descript, a video and audio editing platform with an AI editor called Underlord.
 
 You can:
-- Import one or more media files from public URLs into a project (importMedia) — set width/height for vertical (1080×1920) or square (1080×1080) cuts, and workspace_name/folder_name to place a new project; find projects in a folder with listProjects({ folder_path })
+- Import one or more media files into a project (importMedia) — from public URLs, or upload local files that are in the agent workspace folder via file_path (e.g. "uploads/talk.mp4"; files elsewhere are refused) — set width/height for vertical (1080×1920) or square (1080×1080) cuts, and workspace_name/folder_name to place a new project; find projects in a folder with listProjects({ folder_path })
 - Edit a project with a natural language prompt (agentEdit) — this is Underlord doing the actual editing
 - Publish a composition to a shareable + downloadable link (publish)
 - List and inspect projects (listProjects, getProject)
