@@ -15,6 +15,12 @@ function absoluteFileUrl(url: string): string {
   return `file:${path.resolve(process.cwd(), p.replace(/^\.\//, '')).replace(/\\/g, '/')}`;
 }
 
+function projectRoot(): string {
+  const base = path.resolve(process.env.MASTRA_PROJECT_ROOT ?? process.cwd());
+  const i = base.split(path.sep).indexOf('.mastra');
+  return i === -1 ? base : base.split(path.sep).slice(0, i).join(path.sep);
+}
+
 const boolish = z
   .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
   .transform((v) => v === 'true' || v === '1');
@@ -34,7 +40,12 @@ const envSchema = z
     // Root dir for the Descript CLI workspace sandbox (filesystem + shell) —
     // it reads/writes files and runs `descript-api` here. Set an absolute path
     // for a stable location; a relative path is resolved to absolute at load.
-    WORKSPACE_ROOT: z.string().default('./agent-workspace'),
+    // `mastra dev` runs the bundle from .mastra/output (and sets
+    // MASTRA_PROJECT_ROOT to .mastra), so anchor relative paths above `.mastra`.
+    WORKSPACE_ROOT: z
+      .string()
+      .default('./agent-workspace')
+      .transform((p) => path.resolve(projectRoot(), p)),
 
     // Dolt (versioned business data) — the compose `dolt` service. Optional so
     // the app boots without Dolt; the Dolt tools error clearly if it's missing.

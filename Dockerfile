@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends tini wget && rm
 # subprocess), so `mastra build`'s dependency analysis correctly omits it from
 # .mastra/output's generated package.json/node_modules. Install it globally so
 # the binary exists on PATH regardless of what the bundler kept.
-RUN npm install -g @descript/platform-cli@0.12.0
+RUN npm install -g @descript/platform-cli@0.14.0
 
 RUN groupadd -g 1001 nodejs && \
     useradd -u 1001 -g nodejs -s /bin/sh -M mastra && \
@@ -44,6 +44,8 @@ ENV PORT=4111
 ENV MASTRA_STUDIO_PATH=/app/.mastra/output/studio
 
 COPY --from=build --chown=mastra:nodejs /app/.mastra/output ./.mastra/output
+# Runtime workspace skills (WORKSPACE_ROOT defaults to ./agent-workspace)
+COPY --from=build --chown=mastra:nodejs /app/agent-workspace/skills ./agent-workspace/skills
 
 # Persistent libSQL storage dir. Create it owned by the runtime user so the named
 # `libsqldata` volume mounted here (docker-compose.yml) inherits that ownership on

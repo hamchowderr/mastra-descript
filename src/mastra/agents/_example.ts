@@ -6,6 +6,12 @@ import { listProjects, getProject } from '../tools/projects';
 import { getJob, listJobs, cancelJob } from '../tools/jobs';
 import { getPublishedSubtitles } from '../tools/published';
 import { getCostTotals } from '../tools/cost';
+import { listAgentModels } from '../tools/agent-models';
+import { exportTranscript } from '../tools/export-transcript';
+import { searchDrive } from '../tools/search';
+import { createEditInDescriptUrl } from '../tools/edit-in-descript';
+import { importEditPublishWorkflow } from '../workflows/import-edit-publish';
+import { transcriptExportWorkflow } from '../workflows/transcript-export';
 import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
 import { createDefaultMemory } from '../lib/memory';
 import { getDescriptWorkspace } from '../lib/descript-workspace';
@@ -26,6 +32,16 @@ You can:
 - Cancel a running job (cancelJob)
 - Fetch WEBVTT subtitles for a published project by its share-URL slug (getPublishedSubtitles)
 - Report this session's cumulative spend — AI credits + media-seconds (getCostTotals)
+- List the Underlord models/aliases agentEdit accepts, with cost tiers (listAgentModels)
+- Export a project's transcript as txt/markdown/html/rtf/docx/srt — no publish needed (exportTranscript)
+- Search the whole drive by name OR by what was said in transcripts (searchDrive)
+- Build a one-time "Edit in Descript" import link a human opens to import files into their own account (createEditInDescriptUrl — partner drives only)
+
+Workflows (deterministic, multi-step):
+- importEditPublish: import URLs -> pause for human approval -> Underlord edit -> publish. Use when the user wants the whole pipeline run unattended or repeatably; it stops at the first failed step and reports it.
+- transcriptExport: export a transcript plus word count / detected speakers.
+
+Skills: you have runtime skills (descript-cost-safe-editing, descript-podcast-polish, descript-social-clips, descript-transcript-content). Load the matching skill with the skill tool before starting a task in that area, and ALWAYS load descript-cost-safe-editing before an agentEdit whose prompt you wrote yourself or before switching models.
 
 How Descript works:
 - All mutations (import, edit, publish) are async. They return a job_id and you poll until the job completes.
@@ -44,7 +60,11 @@ Common workflows:
    - listProjects({ name: '...' }) to find it (if you don't have the ID)
    - agentEdit({ project_id, prompt })
 
-3. New project from prompt only (no media):
+3. Find something by what was said:
+   - searchDrive({ query: '...', match: ['content'] }) → project_id
+   - exportTranscript({ project_id, format: 'markdown' }) → write notes/quotes from the real text
+
+4. New project from prompt only (no media):
    - agentEdit({ project_name: '...', prompt: 'Write a 60-second script about X' })
    - This creates a new project. No importMedia needed.
 
@@ -57,11 +77,29 @@ Rules:
 - Only RUNNING jobs can be cancelled (cancelJob). If a user asks to cancel a job that has already stopped, tell them it has already finished rather than attempting to cancel.
 - Only agentEdit invokes Underlord (the AI) and spends AI credits. Imports, publishes, reads, and cancels do NOT call Underlord — don't imply they cost AI credits.
 - If agentEdit returns project_changed:false (status "partial" with a stall message), the edit did NOT run — Underlord stalled at plan/brief approval. Tell the user it didn't execute and suggest a more explicit prompt; never report it as done.
+- Never pass an agentEdit model id you haven't seen in listAgentModels (the default needs no lookup).
+- exportTranscript with format docx returns base64 content — don't paste it into chat; summarize or offer to save it.
 - For "how many credits have I used?" use getCostTotals (a running session total — Descript has no balance endpoint).
 - To iterate on an edit conversationally, pass the conversation_id from the previous agentEdit (with the same project_id) into the next call — Underlord retains the prior turns' context.
 
 You also have a sandboxed workspace with the official \`descript-api\` CLI (run it via \`npx descript-api --help\`, \`npx descript-api config list\`, etc.) for ad-hoc/manual exploration only — checking config, poking at a command interactively, or showing a user raw CLI output. Always prefer your typed tools above (importMedia, agentEdit, publish, etc.) for actual work: they track cost and handle rate-limit/quota errors that the raw CLI does not.`,
-  tools: { importMedia, agentEdit, publish, listProjects, getProject, getJob, listJobs, cancelJob, getPublishedSubtitles, getCostTotals },
+  tools: {
+    importMedia,
+    agentEdit,
+    publish,
+    listProjects,
+    getProject,
+    getJob,
+    listJobs,
+    cancelJob,
+    getPublishedSubtitles,
+    getCostTotals,
+    listAgentModels,
+    exportTranscript,
+    searchDrive,
+    createEditInDescriptUrl,
+  },
+  workflows: { importEditPublish: importEditPublishWorkflow, transcriptExport: transcriptExportWorkflow },
   memory: createDefaultMemory(),
   workspace: getDescriptWorkspace(),
   // Shared safety/hygiene baseline — see src/mastra/lib/processors.ts.

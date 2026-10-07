@@ -49,6 +49,30 @@
       }
     },
     {
+      "match": { "userMessage": "Which Underlord models can I use for edits, and which is cheapest?" },
+      "response": {
+        "content": "I'll call listAgentModels to get the current Underlord models and their cost tiers."
+      }
+    },
+    {
+      "match": { "userMessage": "Export the transcript of project abc123 as an SRT caption file." },
+      "response": {
+        "content": "I'll use exportTranscript on project abc123 with format srt to get the caption file."
+      }
+    },
+    {
+      "match": { "userMessage": "Find the project where we talked about pricing." },
+      "response": {
+        "content": "I'll run searchDrive for \"pricing\" matching transcript content to find that project."
+      }
+    },
+    {
+      "match": { "userMessage": "Make an Edit in Descript link for https://example.com/interview.mp4 so my client can import it." },
+      "response": {
+        "content": "I'll use createEditInDescriptUrl to build a one-time Edit in Descript import link for that file."
+      }
+    },
+    {
       "match": { "userMessage": "Delete project abc123 permanently." },
       "response": {
         "content": "The Descript API has no endpoint for deleting a project, so I can't do that for you — you'll need to delete it directly in the Descript app."

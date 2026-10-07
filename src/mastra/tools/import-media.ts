@@ -69,77 +69,83 @@ export async function validateMediaUrl(url: string, timeoutMs = 10000): Promise<
   return { ok: true };
 }
 
+export const importMediaInput = z.object({
+  media: z
+    .array(mediaItem)
+    .min(1)
+    .describe('One or more media files to import. Each becomes a clip in the composition (in order). Pass a single-element array to import one file.'),
+  project_name: z.string().optional().describe('Name for a new project (mutually exclusive with project_id)'),
+  project_id: z.string().uuid().optional().describe('UUID of an existing project (mutually exclusive with project_name)'),
+  composition_name: z.string().default('Main').describe('Name of the composition that the media is added to'),
+  folder_name: z
+    .string()
+    .optional()
+    .describe('Optional folder for a NEW project; nested paths supported with "/" (e.g. "Client Work/Q3"). Ignored when adding to an existing project_id.'),
+  team_access: z.enum(['edit', 'comment', 'view', 'none']).optional().describe('Access level for new projects only'),
+  skip_url_validation: z
+    .boolean()
+    .default(false)
+    .describe('Skip the pre-flight URL reachability/Range check (only set true if a valid URL is being wrongly rejected)'),
+  callback_url: z
+    .string()
+    .url()
+    .optional()
+    .describe('Optional webhook. If set, Descript POSTs the full job result here on completion and the tool returns IMMEDIATELY without polling (best for long imports). If omitted, the tool polls to completion (default).'),
+});
+
+export const importMediaOutput = z.object({
+  job_id: z.string(),
+  project_id: z.string(),
+  project_url: z.string(),
+  media_count: z.number(),
+  media_seconds_used: z.number().optional().describe('Media-seconds consumed (transcription). No AI credits — import never invokes Underlord.'),
+  status: z.enum(['success', 'partial', 'failed']).optional(),
+  error: z.string().optional(),
+});
+
+export async function runImportMedia(context: z.infer<typeof importMediaInput>): Promise<z.infer<typeof importMediaOutput>> {
+  if (Boolean(context.project_name) === Boolean(context.project_id)) {
+    throw new Error('Provide exactly one of project_name (new project) or project_id (existing project).');
+  }
+  if (!context.skip_url_validation) {
+    const checks = await Promise.all(
+      context.media.map(async (m) => ({ url: m.url, result: await validateMediaUrl(m.url) })),
+    );
+    const bad = checks.filter((c) => !c.result.ok);
+    if (bad.length > 0) {
+      throw new Error(
+        `URL pre-validation failed for ${bad.length} of ${context.media.length} media file(s) — not submitting (saves media minutes):\n` +
+          bad.map((b) => `  • ${b.url} — ${(b.result as { reason: string }).reason}`).join('\n') +
+          '\nFix the URL(s), or pass skip_url_validation: true to bypass.',
+      );
+    }
+  }
+  const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
+  const job = await client.importMedia({ ...buildImportPayload(context), callback_url: context.callback_url });
+  if (context.callback_url) {
+    // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
+    return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, media_count: context.media.length, media_seconds_used: undefined, status: undefined, error: undefined };
+  }
+  const final = await client.pollJob(job.job_id);
+  const status = final.result?.status as 'success' | 'partial' | 'failed' | undefined;
+  const mediaSeconds = typeof final.result?.media_seconds_used === 'number' ? final.result.media_seconds_used : undefined;
+  costMeter.addMediaSeconds(mediaSeconds);
+  return {
+    job_id: job.job_id,
+    project_id: job.project_id,
+    project_url: job.project_url,
+    media_count: context.media.length,
+    media_seconds_used: mediaSeconds,
+    status,
+    error: status === 'failed' ? String(final.result?.error ?? 'Import failed') : undefined,
+  };
+}
+
 export const importMedia = createTool({
   id: 'importMedia',
   description:
     'Import one or more media files from publicly-accessible URLs into a Descript project. Creates a new project if project_name is provided, or adds to an existing project if project_id is provided. All media are added as clips of a single composition, in the order given. Polls until the import job completes. Returns the project_id, project_url, media_count, and final job status. COST: spends media minutes (transcription of the imported media); does NOT invoke Underlord or spend AI credits.',
-  inputSchema: z.object({
-    media: z
-      .array(mediaItem)
-      .min(1)
-      .describe('One or more media files to import. Each becomes a clip in the composition (in order). Pass a single-element array to import one file.'),
-    project_name: z.string().optional().describe('Name for a new project (mutually exclusive with project_id)'),
-    project_id: z.string().uuid().optional().describe('UUID of an existing project (mutually exclusive with project_name)'),
-    composition_name: z.string().default('Main').describe('Name of the composition that the media is added to'),
-    folder_name: z
-      .string()
-      .optional()
-      .describe('Optional folder for a NEW project; nested paths supported with "/" (e.g. "Client Work/Q3"). Ignored when adding to an existing project_id.'),
-    team_access: z.enum(['edit', 'comment', 'view', 'none']).optional().describe('Access level for new projects only'),
-    skip_url_validation: z
-      .boolean()
-      .default(false)
-      .describe('Skip the pre-flight URL reachability/Range check (only set true if a valid URL is being wrongly rejected)'),
-    callback_url: z
-      .string()
-      .url()
-      .optional()
-      .describe('Optional webhook. If set, Descript POSTs the full job result here on completion and the tool returns IMMEDIATELY without polling (best for long imports). If omitted, the tool polls to completion (default).'),
-  }),
-  outputSchema: z.object({
-    job_id: z.string(),
-    project_id: z.string(),
-    project_url: z.string(),
-    media_count: z.number(),
-    media_seconds_used: z.number().optional().describe('Media-seconds consumed (transcription). No AI credits — import never invokes Underlord.'),
-    status: z.enum(['success', 'partial', 'failed']).optional(),
-    error: z.string().optional(),
-  }),
-  execute: async (context) => {
-    if (Boolean(context.project_name) === Boolean(context.project_id)) {
-      throw new Error('Provide exactly one of project_name (new project) or project_id (existing project).');
-    }
-    if (!context.skip_url_validation) {
-      const checks = await Promise.all(
-        context.media.map(async (m) => ({ url: m.url, result: await validateMediaUrl(m.url) })),
-      );
-      const bad = checks.filter((c) => !c.result.ok);
-      if (bad.length > 0) {
-        throw new Error(
-          `URL pre-validation failed for ${bad.length} of ${context.media.length} media file(s) — not submitting (saves media minutes):\n` +
-            bad.map((b) => `  • ${b.url} — ${(b.result as { reason: string }).reason}`).join('\n') +
-            '\nFix the URL(s), or pass skip_url_validation: true to bypass.',
-        );
-      }
-    }
-    const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
-    const job = await client.importMedia({ ...buildImportPayload(context), callback_url: context.callback_url });
-    if (context.callback_url) {
-      // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
-      return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, media_count: context.media.length, media_seconds_used: undefined, status: undefined, error: undefined };
-    }
-    const final = await client.pollJob(job.job_id);
-    const status = final.result?.status as 'success' | 'partial' | 'failed' | undefined;
-    const mediaSeconds = typeof final.result?.media_seconds_used === 'number' ? final.result.media_seconds_used : undefined;
-    costMeter.addMediaSeconds(mediaSeconds);
-    return {
-      job_id: job.job_id,
-      project_id: job.project_id,
-      project_url: job.project_url,
-      media_count: context.media.length,
-      media_seconds_used: mediaSeconds,
-      status,
-      error: status === 'failed' ? String(final.result?.error ?? 'Import failed') : undefined,
-    };
-  },
+  inputSchema: importMediaInput,
+  outputSchema: importMediaOutput,
+  execute: (context) => runImportMedia(context),
 });
