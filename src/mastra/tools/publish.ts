@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { DescriptClient, JOB_OUTCOMES, jobOutcome } from '../lib/descript-client';
 import { env } from '../../lib/env';
+import { resolveCallbackUrl } from '../lib/descript-webhook';
 
 export const publishInput = z.object({
   project_id: z.string().uuid(),
@@ -17,6 +18,10 @@ export const publishInput = z.object({
     .url()
     .optional()
     .describe('Optional webhook. If set, Descript POSTs the full job result here on completion and the tool returns IMMEDIATELY without polling (best for long renders). If omitted, the tool polls to completion (default).'),
+  webhook: z
+    .boolean()
+    .optional()
+    .describe('Return immediately and let the built-in receiver on this server record the result (spend included) when Descript finishes. Needs PUBLIC_BASE_URL and DESCRIPT_WEBHOOK_SECRET on the server. Use for long jobs; check later with getJob.'),
 });
 
 export const publishOutput = z.object({
@@ -33,6 +38,7 @@ export const publishOutput = z.object({
 });
 
 export async function runPublish(context: z.infer<typeof publishInput>): Promise<z.infer<typeof publishOutput>> {
+  const callbackUrl = resolveCallbackUrl(context);
   const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
   const job = await client.publish({
     project_id: context.project_id,
@@ -40,9 +46,9 @@ export async function runPublish(context: z.infer<typeof publishInput>): Promise
     media_type: context.media_type,
     resolution: context.media_type === 'Audio' ? undefined : context.resolution,
     access_level: context.access_level,
-    callback_url: context.callback_url,
+    callback_url: callbackUrl,
   });
-  if (context.callback_url) {
+  if (callbackUrl) {
     // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
     return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, share_url: undefined, composition_id: undefined, media_type: undefined, download_url: undefined, download_url_expires_at: undefined, error: undefined };
   }

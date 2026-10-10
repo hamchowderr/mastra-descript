@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { DescriptClient, JOB_OUTCOMES, jobOutcome } from '../lib/descript-client';
 import { costMeter } from '../lib/cost-meter';
 import { env } from '../../lib/env';
+import { resolveCallbackUrl } from '../lib/descript-webhook';
 
 export const agentEditInput = z.object({
   prompt: z.string().min(1).describe('Natural language editing instruction'),
@@ -20,6 +21,10 @@ export const agentEditInput = z.object({
     .url()
     .optional()
     .describe('Optional webhook. If set, Descript POSTs the full job result here on completion and the tool returns IMMEDIATELY without polling (best for long edits). If omitted, the tool polls to completion (default).'),
+  webhook: z
+    .boolean()
+    .optional()
+    .describe('Return immediately and let the built-in receiver on this server record the result (spend included) when Descript finishes. Needs PUBLIC_BASE_URL and DESCRIPT_WEBHOOK_SECRET on the server. Use for long jobs; check later with getJob.'),
   conversation_id: z
     .string()
     .optional()
@@ -44,8 +49,10 @@ export async function runAgentEdit(context: z.infer<typeof agentEditInput>): Pro
   // Guardrail: abort before spending if this session already hit DESCRIPT_CREDIT_CAP.
   costMeter.assertCreditCap();
   const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
-  const job = await client.agentEdit({ ...context, model: context.model ?? env.DESCRIPT_AGENT_MODEL });
-  if (context.callback_url) {
+  const { webhook: _webhook, ...request } = context;
+  const callbackUrl = resolveCallbackUrl(context);
+  const job = await client.agentEdit({ ...request, callback_url: callbackUrl, model: context.model ?? env.DESCRIPT_AGENT_MODEL });
+  if (callbackUrl) {
     // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
     // The POST already returns conversation_id and resolved_model, so pass them back even without polling.
     return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, ai_credits_used: undefined, agent_response: undefined, project_changed: undefined, conversation_id: job.conversation_id, resolved_model: job.resolved_model, media_seconds_used: undefined, error: undefined };

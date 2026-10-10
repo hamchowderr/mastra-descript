@@ -48,6 +48,7 @@ How Descript works:
 - The tools handle polling automatically — they don't return until the underlying job is done.
 - A job has TWO status fields: top-level job_state ("queued" | "running" | "stopped" | "cancelled") and, once stopped, result.status ("success" | "partial" | "error"). importMedia, agentEdit and publish fold these into one status: "success", "partial", "error" or "cancelled", plus an error message when it did not succeed.
 - If a job fails, report the error clearly. Do not retry automatically.
+- For long imports, edits or renders you may pass webhook: true: the tool returns at once with the job_id, and the server records the result when Descript finishes. Tell the user the job is running and check it later with getJob. Never ask for or invent a callback URL.
 
 Common workflows:
 
