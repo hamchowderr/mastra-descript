@@ -1,7 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { DescriptClient, JOB_OUTCOMES, jobOutcome } from '../lib/descript-client';
-import { costMeter } from '../lib/cost-meter';
 import { env } from '../../lib/env';
 
 export const publishInput = z.object({
@@ -26,6 +25,8 @@ export const publishOutput = z.object({
   project_url: z.string(),
   status: z.enum(JOB_OUTCOMES).optional().describe('success | error | cancelled. Absent in webhook mode.'),
   share_url: z.string().optional(),
+  composition_id: z.string().optional().describe('The composition that was published'),
+  media_type: z.enum(['Video', 'Audio']).optional().describe('What Descript actually published (Audio for audio-only compositions)'),
   download_url: z.string().optional(),
   download_url_expires_at: z.string().optional(),
   error: z.string().optional(),
@@ -43,18 +44,19 @@ export async function runPublish(context: z.infer<typeof publishInput>): Promise
   });
   if (context.callback_url) {
     // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
-    return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, share_url: undefined, download_url: undefined, download_url_expires_at: undefined, error: undefined };
+    return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, share_url: undefined, composition_id: undefined, media_type: undefined, download_url: undefined, download_url_expires_at: undefined, error: undefined };
   }
   const final = await client.pollJob(job.job_id);
   const result = final.result ?? {};
   const { status, error } = jobOutcome(final);
-  costMeter.addMediaSeconds(typeof result.media_seconds_used === 'number' ? result.media_seconds_used : undefined);
   return {
     job_id: job.job_id,
     project_id: job.project_id,
     project_url: job.project_url,
     status,
     share_url: typeof result.share_url === 'string' ? result.share_url : undefined,
+    composition_id: typeof result.composition_id === 'string' ? result.composition_id : undefined,
+    media_type: result.media_type === 'Video' || result.media_type === 'Audio' ? result.media_type : undefined,
     download_url: typeof result.download_url === 'string' ? result.download_url : undefined,
     download_url_expires_at: typeof result.download_url_expires_at === 'string' ? result.download_url_expires_at : undefined,
     error,

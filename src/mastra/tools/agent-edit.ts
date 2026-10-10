@@ -47,7 +47,8 @@ export async function runAgentEdit(context: z.infer<typeof agentEditInput>): Pro
   const job = await client.agentEdit({ ...context, model: context.model ?? env.DESCRIPT_AGENT_MODEL });
   if (context.callback_url) {
     // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
-    return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, ai_credits_used: undefined, agent_response: undefined, project_changed: undefined, conversation_id: undefined, resolved_model: undefined, media_seconds_used: undefined, error: undefined };
+    // The POST already returns conversation_id and resolved_model, so pass them back even without polling.
+    return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, status: undefined, ai_credits_used: undefined, agent_response: undefined, project_changed: undefined, conversation_id: job.conversation_id, resolved_model: job.resolved_model, media_seconds_used: undefined, error: undefined };
   }
   const final = await client.pollJob(job.job_id);
   const result = final.result ?? {};
@@ -68,8 +69,8 @@ export async function runAgentEdit(context: z.infer<typeof agentEditInput>): Pro
     ai_credits_used: aiCredits,
     agent_response: typeof result.agent_response === 'string' ? result.agent_response : undefined,
     project_changed: projectChanged,
-    conversation_id: typeof result.conversation_id === 'string' ? result.conversation_id : undefined,
-    resolved_model: typeof result.resolved_model === 'string' ? result.resolved_model : undefined,
+    conversation_id: typeof result.conversation_id === 'string' ? result.conversation_id : job.conversation_id,
+    resolved_model: typeof result.resolved_model === 'string' ? result.resolved_model : job.resolved_model,
     media_seconds_used: mediaSeconds,
     error: stalled
       ? 'Underlord returned success but project_changed=false — the edit did NOT execute (it likely stalled awaiting creative-brief/plan approval). Re-run with a more explicit, directive prompt.'
