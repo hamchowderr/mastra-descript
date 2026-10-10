@@ -25,25 +25,16 @@ import { descriptAgent } from './agents/_example';
 import { importEditPublishWorkflow } from './workflows/import-edit-publish';
 import { transcriptExportWorkflow } from './workflows/transcript-export';
 import { toolCallAccuracyScorer, answerRelevancyScorer } from './scorers/_example.scorers';
-import { doltTools } from './tools/dolt';
-import { ensureDatabase, doltConfigured } from './lib/dolt';
 import { getSharedStore } from './lib/memory';
 import { registerApiRoute } from '@mastra/core/server';
 import { WEBHOOK_PATH, handleDescriptCallback } from './lib/descript-webhook';
-
-// Bootstrap the versioned Dolt database on first boot (no-op if Dolt isn't configured).
-if (doltConfigured) {
-  await ensureDatabase();
-}
 
 const descriptMcp = new MCPServer({
   id: 'descript-mcp',
   name: 'mastra-descript',
   version: '0.1.0',
-  description: 'MCP server exposing the descriptAgent for Descript API workflows + Dolt tools',
-  // Dolt versioned-data tools exposed over MCP. To let the example agent call
-  // them directly, spread `...doltTools` into the agent's own `tools`.
-  tools: { ...doltTools },
+  description: 'MCP server exposing the descriptAgent for Descript API workflows',
+  tools: {},
   agents: { descript: descriptAgent },
   workflows: { transcriptExport: transcriptExportWorkflow },
 });

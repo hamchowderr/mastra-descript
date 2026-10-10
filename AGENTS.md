@@ -13,8 +13,7 @@ This file is for AI coding agents (Claude Code, Cursor, Copilot, etc.) working o
 2. AIMock setup         (configureAIMock())
 3. Descript healthcheck (only when DESCRIPT_HEALTHCHECK_ON_BOOT=true)
 4. Mastra imports       (agents, tools, stores constructed after AIMock)
-5. Dolt bootstrap       (ensureDatabase(), only when Dolt is configured)
-6. Mastra instance      (new Mastra({ ... }), including the webhook route)
+5. Mastra instance      (new Mastra({ ... }), including the webhook route)
 ```
 
 **Why**: The Vercel AI SDK reads provider base URLs at client instantiation and caches them. AIMock must overwrite env vars before any AI SDK client is constructed. Env must validate before AIMock so it can read `USE_AIMOCK` and `AIMOCK_URL`.
@@ -173,7 +172,7 @@ Every agent registered in `src/mastra/index.ts` is reachable through four standa
 - REST: `POST /api/agents/{agentId}/generate` (and `/stream`) — automatic
 - A2A agent card: `GET /api/.well-known/{agentId}/agent-card.json` — automatic
 - A2A execute: `POST /api/a2a/{agentId}` (JSON-RPC, `method: "message/send"`) — automatic
-- MCP: `POST /api/mcp/{serverId}/mcp` — via `MCPServer` instance (server id: `descript-mcp`; exposes `ask_descript`, the `transcriptExport` workflow and the Dolt tools)
+- MCP: `POST /api/mcp/{serverId}/mcp` — via `MCPServer` instance (server id: `descript-mcp`; exposes `ask_descript` and the `transcriptExport` workflow)
 - Studio: `localhost:4111` UI — automatic via `mastra dev`
 
 Note: `/a2a/{agentId}` (without `/api` prefix) is caught by Studio's router and returns HTML. Always use the `/api/` prefix for A2A and MCP calls.

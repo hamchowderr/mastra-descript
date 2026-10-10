@@ -1,15 +1,14 @@
-# Self-contained agent stack: Mastra (server + Studio) + Dolt. Mastra storage +
+# Self-contained agent stack: one Mastra container (server + Studio). Storage and
 # vectors run on libSQL (a file: DB on the `libsqldata` volume) — no separate
 # storage service. One `docker compose up` brings up a complete, portable agent.
-# Deploys as a single Coolify "Docker Compose" resource (only `mastra` gets a
-# public domain; dolt stays private on the internal network).
+# Deploys as a single Coolify "Docker Compose" resource.
 #
 # Prefer Postgres + pgvector (Supabase) for storage instead? That's a code-level
 # swap plus a compose service — see docs/postgres.md.
 #
 # Secrets come from .env / Coolify env (never commit them):
-#   APP_SECRET, DOLT_PASSWORD, DESCRIPT_API_TOKEN, and an LLM
-#   key (AI_GATEWAY_API_KEY, Vercel AI Gateway). See .env.example.
+#   APP_SECRET, DESCRIPT_API_TOKEN, and the LLM key
+#   (AI_GATEWAY_API_KEY, Vercel AI Gateway). See .env.example.
 
 services:
   mastra:
@@ -37,12 +36,6 @@ services:
       - TURSO_DATABASE_URL=file:/app/data/mastra.db
       # Observability (traces/metrics) DuckDB file → same persistent volume.
       - DUCKDB_PATH=/app/data/mastra.duckdb
-      # Versioned business data → the dolt service (private, internal network)
-      - DOLT_HOST=dolt
-      - DOLT_PORT=3306
-      - DOLT_USER=root
-      - DOLT_PASSWORD=${DOLT_PASSWORD}
-      - DOLT_DATABASE=${DOLT_DATABASE:-appdb}
     volumes:
       - libsqldata:/app/data # libSQL DB (threads, memory, vectors) + DuckDB (observability)
     deploy:
@@ -52,9 +45,6 @@ services:
           cpus: '1.0'
         reservations:
           memory: 256M
-    depends_on:
-      dolt:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:4111/health"]
       interval: 30s
@@ -67,23 +57,5 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  dolt:
-    image: dolthub/dolt-sql-server:latest
-    restart: unless-stopped
-    environment:
-      # allow root from any host on the internal network (default is localhost-only,
-      # which denies the mastra container). Applied on first init only.
-      - DOLT_ROOT_HOST=%
-      - DOLT_ROOT_PASSWORD=${DOLT_PASSWORD}
-    volumes:
-      - doltdata:/var/lib/dolt # versioned DB + full commit history (persist!)
-    healthcheck:
-      test: ["CMD-SHELL", "dolt sql -q 'SELECT 1' >/dev/null 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    # no published port → reachable only as `dolt` on the internal network
-
 volumes:
   libsqldata: {}
-  doltdata: {}
