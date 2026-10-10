@@ -1,6 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { DescriptClient } from '../lib/descript-client';
+import { DescriptClient, JOB_OUTCOMES, jobOutcome } from '../lib/descript-client';
 import { costMeter } from '../lib/cost-meter';
 import { env } from '../../lib/env';
 
@@ -21,7 +21,7 @@ export const publishOutput = z.object({
   job_id: z.string(),
   project_id: z.string(),
   project_url: z.string(),
-  status: z.enum(['success', 'partial', 'failed']).optional(),
+  status: z.enum(JOB_OUTCOMES).optional().describe('success | error | cancelled. Absent in webhook mode.'),
   share_url: z.string().optional(),
   download_url: z.string().optional(),
   download_url_expires_at: z.string().optional(),
@@ -44,7 +44,7 @@ export async function runPublish(context: z.infer<typeof publishInput>): Promise
   }
   const final = await client.pollJob(job.job_id);
   const result = final.result ?? {};
-  const status = result.status as 'success' | 'partial' | 'failed' | undefined;
+  const { status, error } = jobOutcome(final);
   costMeter.addMediaSeconds(typeof result.media_seconds_used === 'number' ? result.media_seconds_used : undefined);
   return {
     job_id: job.job_id,
@@ -54,7 +54,7 @@ export async function runPublish(context: z.infer<typeof publishInput>): Promise
     share_url: typeof result.share_url === 'string' ? result.share_url : undefined,
     download_url: typeof result.download_url === 'string' ? result.download_url : undefined,
     download_url_expires_at: typeof result.download_url_expires_at === 'string' ? result.download_url_expires_at : undefined,
-    error: status === 'failed' ? String(result.error ?? 'Publish failed') : undefined,
+    error,
   };
 }
 

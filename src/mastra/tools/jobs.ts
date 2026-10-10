@@ -1,24 +1,35 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { DescriptClient } from '../lib/descript-client';
+import { DescriptClient, type DescriptJob } from '../lib/descript-client';
+
+// Spec v1.2 says job_id is a UUID, but the live API returns prefixed ids such as
+// "project-media-import-<uuid>" (observed 2026-10-09), so accept any non-empty id.
+export const jobIdSchema = z.string().min(1).describe('Job id as returned by importMedia, agentEdit, publish or listJobs (e.g. "project-media-import-…")');
+const jobState = z.enum(['queued', 'running', 'stopped', 'cancelled']);
+const resultStatus = z.enum(['success', 'partial', 'error']);
+
+const resultError = (job: DescriptJob) =>
+  job.result?.status === 'error' ? (typeof job.result.error_message === 'string' ? job.result.error_message : 'Job failed') : undefined;
 import { env } from '../../lib/env';
 
 export const getJob = createTool({
   id: 'getJob',
-  description: 'Get the current status of a specific Descript job. Returns the full job object including job_state (running/stopped) and result.status (success/partial/failed) when complete. COST: free — read-only, no AI credits or media minutes.',
+  description: 'Get the current status of a specific Descript job. Returns job_state (queued/running/stopped/cancelled), and once stopped, result_status (success/partial/error) with error_message on failure. COST: free — read-only, no AI credits or media minutes.',
   inputSchema: z.object({
-    job_id: z.string().uuid(),
+    job_id: jobIdSchema,
   }),
   outputSchema: z.object({
     job_id: z.string(),
     job_type: z.string(),
-    job_state: z.enum(['running', 'stopped']),
+    job_state: jobState,
     project_id: z.string().optional(),
     project_url: z.string().optional(),
     created_at: z.string(),
     stopped_at: z.string().optional(),
-    result_status: z.enum(['success', 'partial', 'failed']).optional(),
+    result_status: resultStatus.optional(),
+    error_message: z.string().optional(),
     progress_label: z.string().optional(),
+    progress_percent: z.number().optional(),
   }),
   execute: async (context) => {
     const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
@@ -31,8 +42,10 @@ export const getJob = createTool({
       project_url: job.project_url,
       created_at: job.created_at,
       stopped_at: job.stopped_at,
-      result_status: job.result?.status as 'success' | 'partial' | 'failed' | undefined,
+      result_status: job.result?.status,
+      error_message: resultError(job),
       progress_label: job.progress?.label,
+      progress_percent: job.progress?.percent,
     };
   },
 });
@@ -40,9 +53,9 @@ export const getJob = createTool({
 export const cancelJob = createTool({
   id: 'cancelJob',
   description:
-    'Cancel a RUNNING Descript job (import, agent edit, or publish) via DELETE /jobs/{job_id}. Only jobs whose job_state is "running" can be cancelled — a job that has already stopped cannot. Returns confirmation; surfaces an error if the job is not found or already finished. COST: free.',
+    'Cancel a queued or running Descript job (import, agent edit, or publish) via DELETE /jobs/{job_id}. A job that has already stopped or been cancelled cannot be cancelled. Returns confirmation; surfaces an error if the job is not found or already finished. COST: free.',
   inputSchema: z.object({
-    job_id: z.string().uuid(),
+    job_id: jobIdSchema,
   }),
   outputSchema: z.object({
     job_id: z.string(),
@@ -70,11 +83,12 @@ export const listJobs = createTool({
     jobs: z.array(z.object({
       job_id: z.string(),
       job_type: z.string(),
-      job_state: z.enum(['running', 'stopped']),
+      job_state: jobState,
       project_id: z.string().optional(),
       created_at: z.string(),
       stopped_at: z.string().optional(),
-      result_status: z.enum(['success', 'partial', 'failed']).optional(),
+      result_status: resultStatus.optional(),
+      error_message: z.string().optional(),
     })),
     next_cursor: z.string().optional(),
   }),
@@ -89,7 +103,8 @@ export const listJobs = createTool({
         project_id: j.project_id,
         created_at: j.created_at,
         stopped_at: j.stopped_at,
-        result_status: j.result?.status as 'success' | 'partial' | 'failed' | undefined,
+        result_status: j.result?.status,
+        error_message: resultError(j),
       })),
       next_cursor: result.pagination?.next_cursor,
     };
