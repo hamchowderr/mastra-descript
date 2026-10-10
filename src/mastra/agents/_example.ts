@@ -52,7 +52,7 @@ How Descript works:
 Common workflows:
 
 1. Import + edit + publish (full pipeline):
-   - importMedia({ media: [{ url }], project_name }) → returns project_id (pass several { url } entries to import multiple files into one project)
+   - importMedia({ media: [{ url }], project_name }) → returns project_id (pass several { url } entries to import multiple files into one project; files play one after another unless grouped with multitrack: [{ tracks: [{ media: 1 }, { media: 2, offset: 0 }] }], which syncs them as tracks played together, e.g. camera angles or separate host/guest mics)
    - agentEdit({ project_id, prompt }) → AI does the editing
    - publish({ project_id }) → returns share_url (Descript picks Video, or Audio for audio-only compositions)
 

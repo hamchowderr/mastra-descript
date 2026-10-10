@@ -17,7 +17,7 @@ description: Use before any agentEdit (Underlord) call, when the user asks about
 
 ## After agentEdit
 
-- `status: "success"` and `project_changed: true` -> report `credits_used` and what changed.
+- `status: "success"` and `project_changed: true` -> report `ai_credits_used` and what changed.
 - `project_changed: false` -> the edit did NOT run. Say so, and suggest a more explicit prompt (see step 3). Do not retry automatically.
 - `status: "partial"` -> surface which parts failed.
 - Credit-cap error (DESCRIPT_CREDIT_CAP reached) -> stop; tell the user the session cap was hit. Never try to work around it.
