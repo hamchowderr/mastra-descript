@@ -35,6 +35,8 @@ services:
       # Mastra storage + vectors → libSQL file: DB on the persistent libsqldata
       # volume (absolute path so it lands on the mount, not the ephemeral layer).
       - TURSO_DATABASE_URL=file:/app/data/mastra.db
+      # Observability (traces/metrics) DuckDB file → same persistent volume.
+      - DUCKDB_PATH=/app/data/mastra.duckdb
       # Versioned business data → the dolt service (private, internal network)
       - DOLT_HOST=dolt
       - DOLT_PORT=3306
@@ -42,7 +44,7 @@ services:
       - DOLT_PASSWORD=${DOLT_PASSWORD}
       - DOLT_DATABASE=${DOLT_DATABASE:-appdb}
     volumes:
-      - libsqldata:/app/data # libSQL DB (threads, memory, observability, vectors)
+      - libsqldata:/app/data # libSQL DB (threads, memory, vectors) + DuckDB (observability)
     deploy:
       resources:
         limits:
