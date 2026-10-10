@@ -96,6 +96,11 @@ const envSchema = z
     // Optional guardrail: abort an agentEdit before submit once this many AI credits
     // have been spent THIS SESSION (cumulative — there's no credits-remaining endpoint).
     DESCRIPT_CREDIT_CAP: z.coerce.number().int().positive().optional(),
+    // Built-in receiver for Descript job callbacks (POST /webhooks/descript/<secret>). Both must be
+    // set for tools' `webhook: true`. Descript doesn't sign callbacks, so the secret in the URL is
+    // the only proof a request came from a callback we registered; the job is re-read before use.
+    PUBLIC_BASE_URL: z.string().url().optional(),
+    DESCRIPT_WEBHOOK_SECRET: z.string().min(32, 'DESCRIPT_WEBHOOK_SECRET must be at least 32 chars').optional(),
   })
   .refine(
     (e) => Boolean(e.ANTHROPIC_API_KEY || e.OPENAI_API_KEY || e.GOOGLE_GENERATIVE_AI_API_KEY),

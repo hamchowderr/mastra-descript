@@ -28,6 +28,8 @@ import { toolCallAccuracyScorer, answerRelevancyScorer } from './scorers/_exampl
 import { doltTools } from './tools/dolt';
 import { ensureDatabase, doltConfigured } from './lib/dolt';
 import { getSharedStore } from './lib/memory';
+import { registerApiRoute } from '@mastra/core/server';
+import { WEBHOOK_PATH, handleDescriptCallback } from './lib/descript-webhook';
 
 // Bootstrap the versioned Dolt database on first boot (no-op if Dolt isn't configured).
 if (doltConfigured) {
@@ -50,12 +52,25 @@ const descriptMcp = new MCPServer({
 // behind a Bearer JWT signed with the shared secret. `/health` and `/api/auth/*`
 // stay public (so healthchecks and the Studio login screen still work). Leave
 // the secret unset for open local dev. Shared-secret only — no external provider.
-const serverConfig = env.MASTRA_JWT_SECRET
-  ? { auth: new MastraJwtAuth({ secret: env.MASTRA_JWT_SECRET }) }
-  : undefined;
+const serverConfig = {
+  ...(env.MASTRA_JWT_SECRET ? { auth: new MastraJwtAuth({ secret: env.MASTRA_JWT_SECRET }) } : {}),
+  apiRoutes: [
+    // Descript job callbacks. Descript can't send a JWT, so this route skips Mastra auth and is
+    // authenticated by DESCRIPT_WEBHOOK_SECRET in the path instead (404 when the secret is unset).
+    registerApiRoute(WEBHOOK_PATH, {
+      method: 'POST',
+      requiresAuth: false,
+      handler: async (c) => {
+        const payload = await c.req.json().catch(() => null);
+        const result = await handleDescriptCallback(c.req.param('token'), payload);
+        return c.json(result.body, result.status);
+      },
+    }),
+  ],
+};
 
 export const mastra = new Mastra({
-  ...(serverConfig ? { server: serverConfig } : {}),
+  server: serverConfig,
   agents: { descript: descriptAgent },
   workflows: { importEditPublish: importEditPublishWorkflow, transcriptExport: transcriptExportWorkflow },
   scorers: { toolCallAccuracyScorer, answerRelevancyScorer },

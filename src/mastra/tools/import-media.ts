@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { DescriptClient, JOB_OUTCOMES, jobOutcome, uploadToSignedUrl } from '../lib/descript-client';
 import { costMeter } from '../lib/cost-meter';
 import { env } from '../../lib/env';
+import { resolveCallbackUrl } from '../lib/descript-webhook';
 
 const mediaItem = z.object({
   url: z.string().url().optional().describe('Publicly accessible URL to the media file (MP4, MOV, WAV, FLAC, AAC, MP3). Provide exactly one of url or file_path.'),
@@ -305,6 +306,10 @@ export const importMediaInput = z.object({
     .url()
     .optional()
     .describe('Optional webhook. If set, Descript POSTs the full job result here on completion and the tool returns IMMEDIATELY without polling (best for long imports). If omitted, the tool polls to completion (default).'),
+  webhook: z
+    .boolean()
+    .optional()
+    .describe('Return immediately and let the built-in receiver on this server record the result (spend included) when Descript finishes. Needs PUBLIC_BASE_URL and DESCRIPT_WEBHOOK_SECRET on the server. Use for long jobs; check later with getJob.'),
 });
 
 export const importMediaOutput = z.object({
@@ -351,6 +356,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
   const resolved = await Promise.all(
     context.media.map(async (m) => (m.file_path ? { ...m, file: await resolveUploadFile(m.file_path, env.WORKSPACE_ROOT) } : { ...m, file: undefined })),
   );
+  const callbackUrl = resolveCallbackUrl(context);
   const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
   // Adding to an existing project: read its current media names (free) so new names don't conflict.
   const existing = context.project_id ? Object.keys((await client.getProject(context.project_id)).media_files ?? {}) : [];
@@ -373,7 +379,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
       })),
       multitrack: multitrack.map((seq, i) => ({ key: sequenceKeys[i], tracks: seq.tracks })),
     }),
-    callback_url: context.callback_url,
+    callback_url: callbackUrl,
   });
   // Direct uploads: PUT each file to its signed URL. The job processes them automatically
   // once the bytes land. On any failure, cancel the job so it doesn't sit waiting for files.
@@ -388,7 +394,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
       throw new Error(`Upload of ${m.file_path} failed, import job ${job.job_id} cancelled: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  if (context.callback_url) {
+  if (callbackUrl) {
     // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
     return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, media_count: context.media.length, media_seconds_used: undefined, status: undefined, media_status: undefined, created_compositions: undefined, error: undefined };
   }

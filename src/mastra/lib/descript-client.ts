@@ -66,7 +66,7 @@ export type DescriptError = {
   retryAfter?: number;
 };
 
-class DescriptApiError extends Error {
+export class DescriptApiError extends Error {
   status: number;
   retryAfter?: number;
   constructor(status: number, message: string, retryAfter?: number) {
