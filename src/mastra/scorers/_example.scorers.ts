@@ -2,6 +2,7 @@ import { createPromptAlignmentScorerLLM } from '@mastra/evals/scorers/prebuilt';
 import { createScorer } from '@mastra/core/evals';
 import { getUserMessageFromRunInput, getAssistantMessageFromRunOutput } from '@mastra/evals/scorers/utils';
 import { z } from 'zod';
+import { JUDGE_MODEL } from '../lib/models';
 
 /**
  * Checks whether the agent invoked the expected Descript tool for a given request.
@@ -14,7 +15,7 @@ export const toolCallAccuracyScorer = createScorer({
   description: 'Verifies the agent called the correct Descript tool for the given request',
   type: 'agent',
   judge: {
-    model: 'anthropic/claude-sonnet-4-6',
+    model: JUDGE_MODEL,
     instructions:
       'You evaluate whether an AI agent correctly selected the right Descript API tool for a given user request. ' +
       'Available tools: importMedia (import media from URLs or local files, optionally as synced multitrack), agentEdit (AI edit with prompt), ' +
@@ -72,5 +73,5 @@ Return JSON: { expectedTool, calledTool, match, explanation }
  * Uses prompt alignment: the agent's response should align with its instructions.
  */
 export const answerRelevancyScorer = createPromptAlignmentScorerLLM({
-  model: 'anthropic/claude-sonnet-4-6',
+  model: JUDGE_MODEL,
 });

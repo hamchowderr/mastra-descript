@@ -11,7 +11,7 @@ AGENT_NAME:        <kebab-case name, e.g. "clip-scout">
 AGENT_ID:          <camelCase id used in API routes, e.g. "clipScout">
 PURPOSE:           <one sentence: what the agent does and who calls it>
 TOOLS:             <which existing tools in src/mastra/tools/ it uses, and any new ones>
-MODEL:             <default: anthropic/claude-sonnet-4-6>
+MODEL:             <default: AGENT_MODEL from src/mastra/lib/models.ts (vercel/anthropic/claude-sonnet-5.5)>
 EVAL_CASES:        <8+ requests, each with the tool the agent should call, or null when no tool fits>
 ```
 
@@ -66,7 +66,7 @@ Produce these files and changes in order:
 - Never read `process.env` directly — use `env` from `../../lib/env`; new env vars go in `env.ts` and `.env.example` together
 - Never construct an AI SDK client before `configureAIMock()` runs (it is called in `index.ts` before agents are imported)
 - Use relative imports only, no barrel files
-- Model string format: `provider/model-id` (e.g. `anthropic/claude-sonnet-4-6`)
+- Models come from `src/mastra/lib/models.ts` (Vercel AI Gateway, `vercel/<provider>/<model>`); add a constant there rather than hardcoding a string
 
 ---
 

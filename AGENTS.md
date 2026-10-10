@@ -61,7 +61,7 @@ File naming: `src/mastra/agents/<kebab-name>.ts`. The `descript` agent lives in 
 
 Every agent must have `id`, `name`, `description`, `model`, `instructions`, and `tools`. The `description` is required — `MCPServer` fails to start without it.
 
-Model string format: `anthropic/claude-sonnet-4-6` (provider/model-id).
+Model strings live in `src/mastra/lib/models.ts`. LLM calls go through the Vercel AI Gateway: `vercel/<gateway model id>` (e.g. `vercel/anthropic/claude-sonnet-5.5`, gateway ids use dots), authenticated with `AI_GATEWAY_API_KEY`. Under `USE_AIMOCK=true` the direct Anthropic id (`anthropic/claude-sonnet-5-5`, dashes) is used, because AIMock fakes Anthropic's API, not the gateway. Never add direct provider keys for production use; one gateway key covers every provider.
 
 Tools used only by one agent can live inline. Shared tools go in `src/mastra/tools/`.
 

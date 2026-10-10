@@ -13,6 +13,7 @@ import { createEditInDescriptUrl } from '../tools/edit-in-descript';
 import { importEditPublishWorkflow } from '../workflows/import-edit-publish';
 import { transcriptExportWorkflow } from '../workflows/transcript-export';
 import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
+import { AGENT_MODEL } from '../lib/models';
 import { createDefaultMemory } from '../lib/memory';
 import { getDescriptWorkspace } from '../lib/descript-workspace';
 
@@ -20,7 +21,7 @@ export const descriptAgent = new Agent({
   id: 'descript',
   name: 'Descript',
   description: 'Automates Descript video and audio editing workflows via natural language. Imports media from URLs, runs AI edits via Underlord, publishes shareable links, and manages projects and jobs.',
-  model: 'anthropic/claude-sonnet-4-6',
+  model: AGENT_MODEL,
   instructions: `You are an automation agent for Descript, a video and audio editing platform with an AI editor called Underlord.
 
 You can:

@@ -9,7 +9,7 @@
 #
 # Secrets come from .env / Coolify env (never commit them):
 #   APP_SECRET, DOLT_PASSWORD, DESCRIPT_API_TOKEN, and an LLM
-#   key (ANTHROPIC_API_KEY / OPENAI_API_KEY). See .env.example.
+#   key (AI_GATEWAY_API_KEY, Vercel AI Gateway). See .env.example.
 
 services:
   mastra:

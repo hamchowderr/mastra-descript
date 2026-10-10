@@ -153,7 +153,7 @@ Resume the approval step with `run.resume({ step: 'approve-edit', resumeData: { 
 
 ## 🚀 Getting started
 
-**Prerequisites:** Node.js 24+ · an Anthropic API key (or OpenAI/Google) · a Descript API token (Descript → Settings → API tokens). Local development needs no Docker or external database: storage defaults to a local libSQL `file:` database.
+**Prerequisites:** Node.js 24+ · a Vercel AI Gateway key (`AI_GATEWAY_API_KEY`; one key for every model provider) · a Descript API token (Descript → Settings → API tokens). Local development needs no Docker or external database: storage defaults to a local libSQL `file:` database.
 
 ```bash
 # 1. Clone and install
@@ -162,7 +162,7 @@ npm install
 
 # 2. Configure (every variable is documented inline)
 cp .env.example .env
-#   Fill in: APP_SECRET, ANTHROPIC_API_KEY, DESCRIPT_API_TOKEN
+#   Fill in: APP_SECRET, AI_GATEWAY_API_KEY, DESCRIPT_API_TOKEN
 
 # 3. Check the Descript token
 npm run descript:ping        # → ✓ Descript API is reachable … (api_version v1)
@@ -257,7 +257,7 @@ Dockerfile · docker-compose.yml   node:24-slim runtime + Mastra and Dolt servic
 | Layer | Technology |
 |---|---|
 | Agent framework | [Mastra](https://mastra.ai): `@mastra/core`, `memory`, `evals`, `libsql`, `duckdb`, `observability`, `auth`, `mcp`, `editor` |
-| LLM | Claude Sonnet 4.6 for the agent; Underlord is multi-provider |
+| LLM | Claude Sonnet 5.5 through the [Vercel AI Gateway](https://vercel.com/ai-gateway) (`vercel/anthropic/claude-sonnet-5.5`, set in `src/mastra/lib/models.ts`); Underlord is multi-provider |
 | API server | [Hono](https://hono.dev), mounted by Mastra |
 | Database | [libSQL](https://github.com/tursodatabase/libsql)/[Turso](https://turso.tech): a local `file:` DB in development, hosted Turso in production · DuckDB for traces and metrics · [Dolt](https://www.dolthub.com/) for versioned data. Postgres/pgvector instead? See [`docs/postgres.md`](docs/postgres.md) |
 | Descript CLI | [`@descript/platform-cli`](https://www.npmjs.com/package/@descript/platform-cli) in a sandboxed workspace; ad-hoc exploration only, not the cost-tracked path |
@@ -302,7 +302,7 @@ CI runs typecheck, then unit tests, build and the AIMock eval in parallel on eve
 npm run dev           # agent server + Studio → http://localhost:4111
 ```
 
-- 💬 **Chat** with the `descript` agent (uses your `ANTHROPIC_API_KEY`)
+- 💬 **Chat** with the `descript` agent (uses your `AI_GATEWAY_API_KEY`)
 - ✏️ **Edit and version the system prompt** in the Agent Editor
 - 🧠 **Memory and threads**, stored in the local libSQL database
 - 🔭 **Traces and metrics** for each run (agent, tool, and LLM spans)
