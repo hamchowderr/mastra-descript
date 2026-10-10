@@ -11,7 +11,8 @@
     "eval": "node --env-file=.env --import tsx/esm scripts/eval.ts",
     "descript:ping": "node --env-file=.env --import tsx/esm scripts/descript-ping.ts",
     "descript:verify": "node --env-file=.env --import tsx/esm scripts/descript-verify.ts",
-    "score:list": "mastra scorers list"
+    "score:list": "mastra scorers list",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -41,7 +42,8 @@
     "@types/node": "^24.13.3",
     "mastra": "^1.31.4",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
