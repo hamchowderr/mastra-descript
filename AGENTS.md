@@ -9,9 +9,12 @@ This file is for AI coding agents (Claude Code, Cursor, Copilot, etc.) working o
 `src/mastra/index.ts` must initialize in this exact order:
 
 ```
-1. env validation   (import env from '../lib/env')
-2. AIMock setup     (configureAIMock())
-3. Mastra instance  (new Mastra({ ... }))
+1. env validation       (import env from '../lib/env')
+2. AIMock setup         (configureAIMock())
+3. Descript healthcheck (only when DESCRIPT_HEALTHCHECK_ON_BOOT=true)
+4. Mastra imports       (agents, tools, stores constructed after AIMock)
+5. Dolt bootstrap       (ensureDatabase(), only when Dolt is configured)
+6. Mastra instance      (new Mastra({ ... }), including the webhook route)
 ```
 
 **Why**: The Vercel AI SDK reads provider base URLs at client instantiation and caches them. AIMock must overwrite env vars before any AI SDK client is constructed. Env must validate before AIMock so it can read `USE_AIMOCK` and `AIMOCK_URL`.
@@ -44,16 +47,17 @@ import { descriptAgent } from './agents';   // no barrel imports
 All env vars flow through `src/lib/env.ts`. This is the single source of truth.
 
 Rules:
-- Never read `process.env.*` directly outside of `src/lib/env.ts`
+- Never read `process.env.*` directly outside of `src/lib/env.ts`. Two deliberate exceptions: `lib/aimock.ts` *writes* provider base URLs into `process.env` for the AI SDK, and `lib/descript-workspace.ts` passes the OS `PATH` to the CLI sandbox
 - When adding a new env var: add to the Zod schema in `env.ts` AND to `.env.example` at the same time
 - Optional vars use `.optional()` in the schema; required vars have no default
-- Boolish vars (`USE_AIMOCK`) use the `boolish` transform defined at the top of `env.ts`
+- Boolean vars use the `boolish` transform defined at the top of `env.ts` (`"true"`/`"1"` → true, `"false"`/`"0"` → false). Never `z.coerce.boolean()`: it turns the string `"false"` into `true`
+- File paths (`TURSO_DATABASE_URL` file: URLs, `WORKSPACE_ROOT`, `DUCKDB_PATH`) are resolved to absolute paths above `.mastra`, because `mastra dev` runs the bundle from a different working directory
 
 ---
 
 ## Agent Conventions
 
-File naming: `src/mastra/agents/<kebab-name>.ts` (prefix `_` for examples/templates).
+File naming: `src/mastra/agents/<kebab-name>.ts`. The `descript` agent lives in `_example.ts` (with `scorers/_example.scorers.ts` and `datasets/_example.json`) because this repo is a template: the `_` marks the files a fork replaces with its own agent.
 
 Every agent must have `id`, `name`, `description`, `model`, `instructions`, and `tools`. The `description` is required — `MCPServer` fails to start without it.
 
@@ -65,21 +69,29 @@ Tools used only by one agent can live inline. Shared tools go in `src/mastra/too
 
 ## Descript API Conventions
 
-The Descript API is **async and job-based**. Every mutation (importMedia, agentEdit, publish) returns a job ID. The tools in `src/mastra/tools/` handle polling automatically via `DescriptClient.pollJob()` — they do not return until the job is done (unless `callback_url` is set, in which case they return immediately and Descript webhooks the result).
+The Descript API is **async and job-based**. Every mutation (importMedia, agentEdit, publish) returns a job ID. The tools in `src/mastra/tools/` poll automatically via `DescriptClient.pollJob()` and do not return until the job is done, unless `webhook: true` (built-in receiver) or a `callback_url` is set, in which case they return immediately.
 
-Cost model: **only `agentEdit` spends AI credits** (it invokes Underlord). `importMedia` spends media-seconds (transcription); `publish` spends render time; reads/`cancelJob` are free. Each tool's description carries a `COST:` tag, and `getCostTotals` reports the running session total. `agentEdit` defaults to `DESCRIPT_AGENT_MODEL` (`claude-haiku-4.5`, the low-cost tier) and accepts `conversation_id` for multi-turn editing. Model ids change as Descript launches/retires models — `GET /agent/models` (`listAgentModels`) is the source of truth; never hardcode a model enum.
+Cost model: **only `agentEdit` spends AI credits** (it invokes Underlord). `importMedia` spends media-seconds (transcription); `publish` spends render time; reads/`cancelJob` are free. Each tool's description carries a `COST:` tag, and `getCostTotals` reports the running session total. `agentEdit` defaults to `DESCRIPT_AGENT_MODEL` (the `claude-haiku` alias, low-cost tier) and accepts `conversation_id` for multi-turn editing. Model ids change as Descript launches and retires models (`claude-haiku-4.5` was retired by 2026-10-09). `GET /agent/models` (`listAgentModels`) is the source of truth; prefer aliases for defaults and never hardcode a model enum.
 
-A job has two status fields:
-- Top-level `job_state`: `"running"` | `"stopped"`
-- Nested `result.status`: `"success"` | `"partial"` | `"failed"`
+A job has two status fields (spec v1.2):
+- Top-level `job_state`: `"queued"` | `"running"` | `"stopped"` | `"cancelled"`. Only `stopped` and `cancelled` are final; `pollJob` keeps polling through `queued`.
+- Nested `result.status` once stopped: `"success"` | `"partial"` (some imported files failed) | `"error"` (with `error_message` and `error_code`).
 
-Tools surface both. If `result.status === "partial"`, surface this to the user — it means some operations succeeded but others didn't.
+`jobOutcome()` in `descript-client.ts` folds these into one status (`success` | `partial` | `error` | `cancelled`) plus an error message; job tools use it rather than reading `result` themselves. `agentEdit` reports `success` with `project_changed: false` (Underlord stopped at a plan or brief step) as `partial`.
+
+Job ids are prefixed (`project-media-import-<uuid>`), not bare UUIDs as the spec says, so never validate a job id with `.uuid()`.
+
+Import naming: `add_media` keys are the media names users see in Descript. `importMedia` uses the file or URL name (or the item's `name`), and when adding to an existing project reads the project first so media, multitrack (`Sequences/<name>`) and composition names don't clash. Every import creates a new composition; Descript cannot append to an existing one.
+
+Never retry a job-creating POST: `DescriptClient` retries 5xx only for GET/DELETE, because a POST that failed with 5xx may already have created a paid job. 429 retries are capped.
+
+Webhooks: `POST /webhooks/descript/:token` (`lib/descript-webhook.ts`) is registered with `registerApiRoute` and `requiresAuth: false`. Descript doesn't sign callbacks, so the token must match `DESCRIPT_WEBHOOK_SECRET`, the payload is never trusted (the job is re-read with `GET /jobs/{id}`), and spend is recorded once per job. Tools build the callback URL server-side (`webhook: true`) so the secret never enters the agent's context.
 
 **Never retry failed jobs automatically.** Report the error and let the user decide.
 
 When chaining `importMedia → agentEdit`, always wait for `importMedia` to complete (status: "success") before calling `agentEdit`.
 
-Endpoint coverage follows the official OpenAPI spec (`https://docs.descriptapi.com/openapi.json`). Free/sync endpoints wrapped: `GET /agent/models` (`listAgentModels`), `POST /export/transcript` (`exportTranscript` — raw file body; docx returned base64), `GET /search` (`searchDrive`), `POST /edit_in_descript/schema` (`createEditInDescriptUrl`, partner drives only).
+Endpoint coverage follows the official OpenAPI spec (`https://help.descript.com/developers/openapi.json`, v1.2); all 14 operations are wrapped. Free/sync endpoints: `GET /agent/models` (`listAgentModels`), `POST /export/transcript` (`exportTranscript` — raw file body; docx returned base64), `GET /search` (`searchDrive`), `POST /edit_in_descript/schema` (`createEditInDescriptUrl`, partner drives only).
 
 Workflows live in `src/mastra/workflows/` and reuse the tools' exported `run*` functions + Zod schemas (e.g. `runImportMedia`, `importMediaInput`) — don't duplicate client logic in steps. Any workflow that spends AI credits must suspend for approval before the `agentEdit` step unless the caller opts out. Register new workflows in `src/mastra/index.ts` (and on the agent if it should run them).
 
@@ -106,7 +118,7 @@ The Descript template uses **tool-call accuracy** eval (not structured output co
 }
 ```
 
-Minimum 8 cases. Include at least one `null` case (agent must not hallucinate a tool call when none exists).
+The dataset currently has 13 cases. Keep at least 8, including at least one `null` case (agent must not hallucinate a tool call when none exists).
 
 Correct import paths for prebuilt scorers:
 ```typescript
@@ -141,7 +153,7 @@ In CI, AIMock runs as a Docker container; the CI yml mounts `./fixtures/` and pa
 The Mastra instance uses a composite store:
 - **default domain** → `LibSQLStore` (libSQL/Turso via `TURSO_DATABASE_URL` + optional `TURSO_AUTH_TOKEN`) — the shared instance from `src/mastra/lib/memory.ts`'s `getSharedStore()`
 - **editor domain** → the same `LibSQLStore` instance
-- **observability domain** → `DuckDBStore`
+- **observability domain** → `DuckDBStore` at `DUCKDB_PATH` (default `./mastra.duckdb`, resolved absolute; Docker sets `/app/data/mastra.duckdb` on the persistent volume)
 
 All stores require an explicit `id` field:
 ```typescript
@@ -161,7 +173,7 @@ Every agent registered in `src/mastra/index.ts` is reachable through four standa
 - REST: `POST /api/agents/{agentId}/generate` (and `/stream`) — automatic
 - A2A agent card: `GET /api/.well-known/{agentId}/agent-card.json` — automatic
 - A2A execute: `POST /api/a2a/{agentId}` (JSON-RPC, `method: "message/send"`) — automatic
-- MCP: `POST /api/mcp/{serverId}/mcp` — via `MCPServer` instance (server id: `descript-mcp`)
+- MCP: `POST /api/mcp/{serverId}/mcp` — via `MCPServer` instance (server id: `descript-mcp`; exposes `ask_descript`, the `transcriptExport` workflow and the Dolt tools)
 - Studio: `localhost:4111` UI — automatic via `mastra dev`
 
 Note: `/a2a/{agentId}` (without `/api` prefix) is caught by Studio's router and returns HTML. Always use the `/api/` prefix for A2A and MCP calls.
@@ -185,6 +197,9 @@ When adding a new agent:
 - **Never register an agent before its file passes typecheck** — comment it out until types are clean
 - **Never use barrel/index imports** — import from the specific file
 - **Never retry a failed Descript job automatically** — report the error and let the user decide
+- **Never retry a job-creating Descript POST after a 5xx** — the job may exist; check `listJobs`
+- **Never validate a Descript job id with `.uuid()`** — live ids are prefixed
+- **Never pass the webhook secret through the agent** — use `webhook: true` so the tool builds the URL
 - **Never fabricate Descript job results** — the tools poll until the job completes; trust their return value
 
 ---
@@ -206,8 +221,9 @@ Stop and confirm with the user before making these changes:
 
 ```bash
 npm run dev             # Start Studio at localhost:4111 — no Docker needed, storage defaults to a local file: DB
+npm test                # Unit tests (Vitest), fake fetch, no network
 npm run typecheck       # Verify types before running
-npm run eval            # Run all 8 eval cases; exits 0 on pass, 1 on fail
+npm run eval            # Run all 13 eval cases; exits 0 on pass, 1 on fail
 npm run descript:ping   # Verify DESCRIPT_API_TOKEN is valid
 ```
 

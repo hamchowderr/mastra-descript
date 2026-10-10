@@ -38,7 +38,7 @@ if (doltConfigured) {
 
 const descriptMcp = new MCPServer({
   id: 'descript-mcp',
-  name: 'template-mastra-descript',
+  name: 'mastra-descript',
   version: '0.1.0',
   description: 'MCP server exposing the descriptAgent for Descript API workflows + Dolt tools',
   // Dolt versioned-data tools exposed over MCP. To let the example agent call
@@ -100,7 +100,7 @@ export const mastra = new Mastra({
         // (MASTRA_PLATFORM_ACCESS_TOKEN + MASTRA_PROJECT_ID) — no-op otherwise.
         exporters: [
           new DefaultExporter(),
-          ...(process.env.MASTRA_PLATFORM_ACCESS_TOKEN && process.env.MASTRA_PROJECT_ID
+          ...(env.MASTRA_PLATFORM_ACCESS_TOKEN && env.MASTRA_PROJECT_ID
             ? [new MastraPlatformExporter()]
             : []),
         ],

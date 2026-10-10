@@ -52,18 +52,19 @@ bd close <id>         # Complete work
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+npm install
+npm test            # Vitest unit tests (fake fetch, no network)
+npm run typecheck   # tsc --noEmit
+npm run build       # mastra build
+npm run eval        # tool-selection eval (USE_AIMOCK=true with AIMock running = free)
+npm run dev         # Studio + agent on :4111
 ```
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+One Mastra agent (`descript`, in `src/mastra/agents/_example.ts`) over a typed client for Descript's REST API (`src/mastra/lib/descript-client.ts`, spec v1.2). Underlord does the editing; the agent imports media, runs edits, publishes, tracks spend, and checks input before any job is created. Storage is libSQL/Turso, observability DuckDB, versioned data Dolt. Job callbacks arrive at `POST /webhooks/descript/:token`. The README explains what the agent adds on top of Underlord; `AGENTS.md` has the full conventions.
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+Follow `AGENTS.md`: boot order, env rules (all env through `src/lib/env.ts`), job-state model (`jobOutcome()`), never retrying job-creating POSTs, never validating job ids with `.uuid()`, and import naming. Check Descript behavior against the spec and the live API before documenting it.

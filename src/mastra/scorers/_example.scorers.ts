@@ -17,8 +17,11 @@ export const toolCallAccuracyScorer = createScorer({
     model: 'anthropic/claude-sonnet-4-6',
     instructions:
       'You evaluate whether an AI agent correctly selected the right Descript API tool for a given user request. ' +
-      'Available tools: importMedia (import media from URL), agentEdit (AI edit with prompt), publish (render + share), ' +
-      'listProjects (list projects), getProject (get project details), getJob (get job status), listJobs (list recent jobs). ' +
+      'Available tools: importMedia (import media from URLs or local files, optionally as synced multitrack), agentEdit (AI edit with prompt), ' +
+      'publish (render + share link), listProjects (list projects), getProject (project details and existing publishes), ' +
+      'getJob (job status), listJobs (recent jobs), cancelJob (cancel a queued or running job), getPublishedSubtitles (WEBVTT of a published project), ' +
+      'getCostTotals (session spend), listAgentModels (Underlord models and cost tiers), exportTranscript (transcript file, no publish needed), ' +
+      'searchDrive (search names and transcript content), createEditInDescriptUrl (partner Edit in Descript link). ' +
       'Match: the agent called the expected tool. Mismatch: wrong tool, no tool call when one was needed, or tool called with wrong parameters.',
   },
 })

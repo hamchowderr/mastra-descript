@@ -25,12 +25,6 @@ const mediaItem = z.object({
 });
 
 /**
- * Pure: turn the tool input into the DescriptClient.importMedia payload — a keyed
- * `add_media` map (clip1..clipN) plus one composition whose clips reference every
- * media key, in array order. Kept separate from `execute` so it's unit-testable
- * without hitting the API (a real import consumes media minutes).
- */
-/**
  * File types Descript documents as supported, by extension, with the MIME type sent as content_type.
  * Source: help.descript.com/add-and-manage-media/supported-file-types (checked 2026-10-09).
  * Unsupported there: OGG, WMA, MTS, OGV, AVI, WMV and documents (DOCX, TXT, RTF). Max size is 1-50 GB by plan.
@@ -146,6 +140,12 @@ export function checkMultitrack(media: Array<{ mute?: boolean }>, multitrack: Mu
   return undefined;
 }
 
+/**
+ * Pure: turn the tool input into the DescriptClient.importMedia payload: an `add_media` map keyed by
+ * display name (plus any Multitrack Sequences) and one composition whose clips follow the media order,
+ * with each multitrack in place of its tracks. Kept separate from `execute` so it's unit-testable
+ * without hitting the API (a real import consumes media minutes).
+ */
 export function buildImportPayload(input: {
   media: Array<{ key: string; url?: string; upload?: { content_type: string; file_size: number }; language?: string; mute?: boolean }>;
   /** Already-validated multitracks with their final display-name keys. */

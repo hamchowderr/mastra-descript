@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { env } from '../../lib/env';
 
 /**
  * Dolt connection — Dolt speaks the MySQL wire protocol, so this is a normal
@@ -11,15 +12,15 @@ import mysql from 'mysql2/promise';
  *   DOLT_PASSWORD · DOLT_DATABASE
  */
 const config = {
-  host: process.env.DOLT_HOST || '127.0.0.1',
-  port: Number(process.env.DOLT_PORT || 3306),
-  user: process.env.DOLT_USER || 'root',
-  password: process.env.DOLT_PASSWORD || '',
-  database: process.env.DOLT_DATABASE || 'appdb',
+  host: env.DOLT_HOST || '127.0.0.1',
+  port: env.DOLT_PORT ?? 3306,
+  user: env.DOLT_USER || 'root',
+  password: env.DOLT_PASSWORD || '',
+  database: env.DOLT_DATABASE || 'appdb',
   dateStrings: true as const,
 };
 
-export const doltConfigured = Boolean(process.env.DOLT_HOST || process.env.DOLT_PORT);
+export const doltConfigured = Boolean(env.DOLT_HOST || env.DOLT_PORT);
 
 let _pool: mysql.Pool | null = null;
 export function pool(): mysql.Pool {

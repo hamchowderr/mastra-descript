@@ -3,7 +3,7 @@
 # Use node:24-slim (Debian/glibc), NOT node:24-alpine (musl).
 # DuckDB native modules segfault on Alpine even with gcompat. Node 24+ is also a
 # hard requirement of @descript/platform-cli (the descript-api CLI — see below).
-# This makes the image ~676MB instead of ~150MB. See README "Deployment Notes".
+# This makes the image ~676MB instead of ~150MB. See README "Architecture → Stack".
 # ─── Stage 1: build ───────────────────────────────────────────────
 FROM node:24-slim AS build
 WORKDIR /app

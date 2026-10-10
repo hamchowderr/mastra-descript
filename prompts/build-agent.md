@@ -1,37 +1,31 @@
 # Prompt: Build a New Mastra Agent
 
-Use this prompt to add a complete, production-ready agent to this template.
+Use this prompt to add a complete agent to this template (`mastra-descript`, forked from `mastra-base`).
 
 ---
 
 ## Inputs (fill these in before using the prompt)
 
 ```
-AGENT_NAME:        <kebab-case name, e.g. "invoice-parser">
-AGENT_ID:          <camelCase id used in API routes, e.g. "invoiceParser">
-PURPOSE:           <one sentence: what the agent does and what calls it>
-INPUT_FORMAT:      <what the agent receives: email body / voice transcript / webhook payload / etc.>
-OUTPUT_SCHEMA:     <describe the fields: name, type, nullable?, description>
-TOOLS:             <list inline tools the agent needs, or "none">
+AGENT_NAME:        <kebab-case name, e.g. "clip-scout">
+AGENT_ID:          <camelCase id used in API routes, e.g. "clipScout">
+PURPOSE:           <one sentence: what the agent does and who calls it>
+TOOLS:             <which existing tools in src/mastra/tools/ it uses, and any new ones>
 MODEL:             <default: anthropic/claude-sonnet-4-6>
-EVAL_CASES:        <describe 4-5 test cases: one happy path, one missing-fields, one edge case, one anti-hallucination>
+EVAL_CASES:        <8+ requests, each with the tool the agent should call, or null when no tool fits>
 ```
 
 ---
 
 ## Prompt
 
-You are adding a new agent to the `template-mastra-base` Mastra project. Follow every convention in `AGENTS.md` exactly.
+You are adding a new agent to the `mastra-descript` Mastra project. Follow every convention in `AGENTS.md` exactly.
 
 **Agent to build**: `{AGENT_NAME}` (`{AGENT_ID}`)
 
 **Purpose**: {PURPOSE}
 
-**Input**: {INPUT_FORMAT}
-
-**Output schema**: {OUTPUT_SCHEMA}
-
-**Tools needed**: {TOOLS}
+**Tools**: {TOOLS}
 
 **Model**: {MODEL}
 
@@ -42,55 +36,48 @@ You are adding a new agent to the `template-mastra-base` Mastra project. Follow 
 Produce these files and changes in order:
 
 1. **`src/mastra/agents/{AGENT_NAME}.ts`**
-   - Export a named Zod schema (`{PascalCase}Schema`) and its inferred type
-   - Export the agent as `{camelCase}Agent` with `id: '{AGENT_ID}'`
-   - Include `instructions` that are specific and grounded (no vague "you are a helpful assistant")
-   - Register these scorers with `sampling: { type: 'ratio', rate: 1 }`:
-     - `hallucination` (prebuilt)
-     - `completeness` (prebuilt)
-     - One custom scorer relevant to this agent's domain (use `createScorer`)
-   - Include a Memory instance
-   - Add a JSDoc block at the top: what it does, who calls it, env vars required, example curl
+   - Export the agent as `{camelCase}Agent` with `id: '{AGENT_ID}'`, a non-empty `description` (MCPServer fails to start without it), `model`, `instructions` and `tools`
+   - Instructions are specific and grounded: which tool for which request, what each tool costs, and what to do when a job does not succeed (statuses are `success`, `partial`, `error`, `cancelled`; never retry automatically)
+   - Use the shared memory factory from `../lib/memory` and the shared processors from `../lib/processors`, like `agents/_example.ts`
+   - Reuse tools from `src/mastra/tools/`; new shared tools go there too, with a `COST:` note in the description
 
 2. **`src/mastra/scorers/{AGENT_NAME}.scorers.ts`**
-   - Export `hallucinationScorer`, `completenessScorer`, and the custom domain scorer
+   - Export the scorers the eval uses: tool-call accuracy and answer relevancy, following `scorers/_example.scorers.ts`
    - Import prebuilt scorers from `@mastra/evals/scorers/prebuilt`
-   - Custom scorer uses `.preprocess() → .analyze() → .generateScore() → .generateReason()` chain
 
 3. **`src/mastra/scorers/datasets/{AGENT_NAME}.json`**
    - `agentId`: `{AGENT_ID}`
-   - `thresholds`: `{ "hallucination": 0.85, "completeness": 0.3, "domain": 0.8 }`
-   - `cases`: minimum 5 — happy path, missing fields (nulls), edge case, anti-hallucination (null for absent data), domain-specific
-   - Each case has `name`, `input`, `expectedFields` (deep partial equality — only fields you want to assert)
+   - `thresholds`: `{ "toolCallAccuracy": 0.85, "answerRelevancy": 0.80 }`
+   - `cases`: at least 8, each `{ "name", "input", "expectedTool" }`, where `expectedTool` is the tool name or `null`. Include at least one `null` case (the agent must not invent a tool call)
 
-4. **`src/mastra/index.ts`** — register the new agent:
+4. **`fixtures/*.json`** — AIMock fixtures for each case, matching on a substring of the user message and mentioning the expected tool name in the response text (see `fixtures/descript-agent.json`)
+
+5. **`src/mastra/index.ts`** — register the agent in both places:
    ```typescript
    import { {camelCase}Agent } from './agents/{AGENT_NAME}';
-   // add to mastra({ agents: { ..., {AGENT_ID}: {camelCase}Agent } })
+   // new Mastra({ agents: { ..., {AGENT_ID}: {camelCase}Agent } })        → REST, A2A, Studio
+   // new MCPServer({ agents: { ..., {AGENT_ID}: {camelCase}Agent } })     → MCP, as ask_{AGENT_ID}
    ```
 
 ---
 
 ### Constraints
 
-- Never read `process.env` directly — use `env` from `../../lib/env`
-- Never construct any AI SDK client before `configureAIMock()` runs (it's called in `index.ts` before agents are constructed — safe)
-- Use relative imports only
+- Never read `process.env` directly — use `env` from `../../lib/env`; new env vars go in `env.ts` and `.env.example` together
+- Never construct an AI SDK client before `configureAIMock()` runs (it is called in `index.ts` before agents are imported)
+- Use relative imports only, no barrel files
 - Model string format: `provider/model-id` (e.g. `anthropic/claude-sonnet-4-6`)
-- completeness threshold: `0.3` (not `0.7`) — prebuilt scorer measures prose coverage, which is naturally low for extraction agents
-- Scorer imports: `createHallucinationScorer` and `createCompletenessScorer` come from `@mastra/evals/scorers/prebuilt`, not `@mastra/evals/scorers/llm` or `@mastra/evals/scorers/code`
 
 ---
 
 ### Implementation Order
 
-1. Write the Zod schema and agent shell (no scorers yet) → `npm run typecheck`
-2. Write the scorers file → `npm run typecheck`
-3. Write the dataset JSON
+1. Agent file → `npm run typecheck`
+2. Scorers file → `npm run typecheck`
+3. Dataset JSON and AIMock fixtures
 4. Register in `index.ts` → `npm run typecheck`
-5. `npm run dev` → verify agent appears in Studio
-6. Send one live test message in Studio to confirm structured output
-7. `npm run eval` → confirm all cases pass and exit 0
+5. `npm run dev` → confirm the agent appears in Studio and answers one live message
+6. `USE_AIMOCK=true npm run eval -- src/mastra/scorers/datasets/{AGENT_NAME}.json` with AIMock running → all cases pass and it exits 0 (without a path argument, `eval` runs `_example.json`)
 
 ---
 
@@ -99,5 +86,3 @@ Produce these files and changes in order:
 ```
 {EVAL_CASES}
 ```
-
-Anti-hallucination cases are mandatory. If a field is absent from the input, the agent must return `null` — never invent data. Include at least one case where a key field is missing and assert `"field": null` in `expectedFields`.

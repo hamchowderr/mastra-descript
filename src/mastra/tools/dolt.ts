@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { select, query, commit } from '../lib/dolt';
+import { env } from '../../lib/env';
 
 /**
  * Generic Dolt tools — the bridge between a Mastra agent and the
@@ -12,9 +13,7 @@ import { select, query, commit } from '../lib/dolt';
  * See dolt-mastra-lab for the branch-per-agent "propose → human merges" pattern.
  */
 
-const PERSONA = process.env.AGENT_PERSONA || 'Mastra Agent <agent@otaku.local>';
-const DIRECTOR = process.env.DIRECTOR || 'operator';
-const ATTRIBUTION = { author: PERSONA, directedBy: DIRECTOR, autonomy: 'directed' as const };
+const ATTRIBUTION = { author: env.AGENT_PERSONA, directedBy: env.DIRECTOR, autonomy: 'directed' as const };
 
 export const doltQuery = createTool({
   id: 'doltQuery',

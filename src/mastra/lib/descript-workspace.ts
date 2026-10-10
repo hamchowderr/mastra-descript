@@ -8,11 +8,12 @@
  * This is SUPPLEMENT-ONLY — for ad-hoc/manual exploration, not the agent's real
  * work. `src/mastra/lib/descript-client.ts` (used by the tools in
  * `src/mastra/tools/`) stays the path for billed operations: it has 402
- * (out-of-credits) parsing, 429/5xx retry-backoff, and `DESCRIPT_CREDIT_CAP`
- * enforcement that the raw CLI does not. Verified 2026-08-20 by inspecting the
- * actual `@descript/platform-cli@0.12.0` bundle — no match for 402/429/backoff/
- * credit-cap logic anywhere in it, and it only reimplements `import` + `agent`
- * (not even `publish`).
+ * (out-of-credits) parsing, `DESCRIPT_CREDIT_CAP` enforcement, session spend
+ * totals, stall detection, and never retries a job-creating POST after a 5xx.
+ * Checked 2026-10-10 in the installed `@descript/platform-cli@0.14.0` bundle: it
+ * now retries 429/5xx with Retry-After and backoff and prints credits used, but
+ * has no 402 handling, credit cap or spend totals. (0.12.0, checked 2026-08-20,
+ * had no retry logic and covered only import + agent.)
  */
 
 import { LocalFilesystem, LocalSandbox, Workspace, WORKSPACE_TOOLS } from '@mastra/core/workspace';
