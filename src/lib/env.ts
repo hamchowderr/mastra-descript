@@ -79,11 +79,12 @@ const envSchema = z
     DESCRIPT_RETRIES: z.coerce.number().int().min(0).default(3),
     DESCRIPT_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(3000),
     DESCRIPT_POLL_MAX_ATTEMPTS: z.coerce.number().int().positive().default(600),
-    DESCRIPT_HEALTHCHECK_ON_BOOT: z.coerce.boolean().default(false),
+    DESCRIPT_HEALTHCHECK_ON_BOOT: boolish.default(false),
     // Default Underlord model for agentEdit when the caller doesn't pass one. Descript's
     // catalog changes as models launch/retire — GET /agent/models (listAgentModels) is the
-    // source of truth. claude-haiku-4.5 is the documented low-cost tier.
-    DESCRIPT_AGENT_MODEL: z.string().min(1).default('claude-haiku-4.5'),
+    // source of truth. The default is the `claude-haiku` ALIAS (low-cost tier), which tracks Descript's current
+    // stable Haiku, so a model retirement can't break default edits (claude-haiku-4.5 was retired by 2026-10-09).
+    DESCRIPT_AGENT_MODEL: z.string().min(1).default('claude-haiku'),
     // Optional guardrail: abort an agentEdit before submit once this many AI credits
     // have been spent THIS SESSION (cumulative — there's no credits-remaining endpoint).
     DESCRIPT_CREDIT_CAP: z.coerce.number().int().positive().optional(),

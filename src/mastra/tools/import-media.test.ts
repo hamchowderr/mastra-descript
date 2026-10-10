@@ -20,10 +20,11 @@ await writeFile(path.join(outside, 'secret.mp3'), 'SECRET');
 // 'junction' needs no admin rights on Windows; other platforms ignore the type and make a dir symlink.
 await symlink(outside, path.join(workspace, 'uploads', 'escape'), 'junction');
 
-const { buildImportPayload, checkImportOptions, importMediaInput, resolveUploadFile, runImportMedia } = await import('./import-media');
+const { buildImportPayload, checkImportOptions, defaultMediaName, importMediaInput, resolveUploadFile, runImportMedia, uniqueMediaNames } = await import('./import-media');
 
 const SIGNED_URL = 'https://uploads.descript.test/signed/clip?sig=abc';
 const JOB_ID = 'job-123';
+const EXISTING_PROJECT = '9f36ee32-5a2c-47e7-b1a3-94991d3e3ddb';
 
 type Call = { url: string; method: string; headers: Headers; body?: Uint8Array };
 
@@ -52,6 +53,9 @@ function fakeDescript({ uploadStatus = 200 } = {}) {
       return Response.json({ job_id: JOB_ID, job_state: 'stopped', result: { status: 'success', media_seconds_used: 3 } });
     }
     if (url.endsWith(`/jobs/${JOB_ID}`) && method === 'DELETE') return new Response(null, { status: 204 });
+    if (url.endsWith(`/projects/${EXISTING_PROJECT}`) && method === 'GET') {
+      return Response.json({ id: EXISTING_PROJECT, name: 'Existing', media_files: { 'clip.mp3': { type: 'audio', duration: 3 } }, compositions: [] });
+    }
     return new Response('unexpected request', { status: 500 });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -79,23 +83,42 @@ describe('checkImportOptions', () => {
 });
 
 describe('buildImportPayload', () => {
-  it('keys media clip1..N and puts every clip in one composition, in order', () => {
+  it('keys media by display name and puts every clip in one composition, in order', () => {
     const payload = buildImportPayload({
       project_name: 'P',
       width: 1080,
       height: 1920,
       media: [
-        { url: 'https://cdn.test/a.mp4' },
-        { upload: { content_type: 'audio/mpeg', file_size: 10 }, mute: true },
+        { key: 'a.mp4', url: 'https://cdn.test/a.mp4', language: 'es' },
+        { key: 'Audio/b.mp3', upload: { content_type: 'audio/mpeg', file_size: 10 }, mute: true },
       ],
     });
     expect(payload.add_media).toEqual({
-      clip1: { url: 'https://cdn.test/a.mp4', language: 'en' },
-      clip2: { content_type: 'audio/mpeg', file_size: 10, language: 'en' },
+      'a.mp4': { url: 'https://cdn.test/a.mp4', language: 'es' },
+      'Audio/b.mp3': { content_type: 'audio/mpeg', file_size: 10 },
     });
     expect(payload.add_compositions).toEqual([
-      { name: 'Main', width: 1080, height: 1920, clips: [{ media: 'clip1' }, { media: 'clip2', mute: true }] },
+      { name: 'Main', width: 1080, height: 1920, clips: [{ media: 'a.mp4' }, { media: 'Audio/b.mp3', mute: true }] },
     ]);
+  });
+
+  it('omits language so Descript auto-detects it', () => {
+    const payload = buildImportPayload({ project_name: 'P', media: [{ key: 'a.mp4', url: 'https://cdn.test/a.mp4' }] });
+    expect(payload.add_media['a.mp4']).not.toHaveProperty('language');
+  });
+});
+
+describe('media display names', () => {
+  it('defaults to the name given, else the file or URL file name', () => {
+    expect(defaultMediaName({ name: ' Interviews/guest.mp4 ' }, 0)).toBe('Interviews/guest.mp4');
+    expect(defaultMediaName({ file_path: 'uploads/clip.mp3' }, 0)).toBe('clip.mp3');
+    expect(defaultMediaName({ url: 'https://cdn.test/media/My%20Talk.mp4?sig=1' }, 0)).toBe('My Talk.mp4');
+    expect(defaultMediaName({ url: 'https://cdn.test/' }, 2)).toBe('media-3');
+  });
+
+  it('makes names unique against each other and existing project media', () => {
+    expect(uniqueMediaNames(['a.mp4', 'A.mp4', 'b'], ['a (2).mp4'])).toEqual(['a.mp4', 'A (3).mp4', 'b']);
+    expect(uniqueMediaNames(['clip.mp3'], ['clip.mp3'])).toEqual(['clip (2).mp3']);
   });
 });
 
@@ -124,10 +147,9 @@ describe('runImportMedia', () => {
 
     expect(out).toMatchObject({ job_id: JOB_ID, status: 'success', media_seconds_used: 3, media_count: 1 });
     const submit = calls.find((c) => c.method === 'POST')!;
-    expect(JSON.parse(new TextDecoder().decode(submit.body)).add_media.clip1).toEqual({
+    expect(JSON.parse(new TextDecoder().decode(submit.body)).add_media['clip.mp3']).toEqual({
       content_type: 'audio/mpeg',
       file_size: clip.length,
-      language: 'en',
     });
     const put = calls.find((c) => c.method === 'PUT')!;
     expect(put.url).toBe(SIGNED_URL);
@@ -142,8 +164,17 @@ describe('runImportMedia', () => {
 
     const submit = calls.find((c) => c.method === 'POST')!;
     const { add_media } = JSON.parse(new TextDecoder().decode(submit.body));
-    expect(add_media.clip1).toEqual({ url: 'https://cdn.test/a.mp4', language: 'en' });
-    expect(add_media.clip2.content_type).toBe('audio/mpeg');
+    expect(add_media['a.mp4']).toEqual({ url: 'https://cdn.test/a.mp4' });
+    expect(add_media['clip.mp3'].content_type).toBe('audio/mpeg');
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
+  });
+
+  it('renames media that would conflict with files already in the project', async () => {
+    const { calls } = fakeDescript();
+    await runImportMedia(input({ project_name: undefined, project_id: EXISTING_PROJECT, media: [{ file_path: 'uploads/clip.mp3' }] }));
+
+    const submit = calls.find((c) => c.method === 'POST')!;
+    expect(Object.keys(JSON.parse(new TextDecoder().decode(submit.body)).add_media)).toEqual(['clip (2).mp3']);
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
   });
 

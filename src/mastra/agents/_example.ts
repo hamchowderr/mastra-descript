@@ -54,7 +54,7 @@ Common workflows:
 1. Import + edit + publish (full pipeline):
    - importMedia({ media: [{ url }], project_name }) → returns project_id (pass several { url } entries to import multiple files into one project)
    - agentEdit({ project_id, prompt }) → AI does the editing
-   - publish({ project_id, media_type: 'Video', resolution: '1080p' }) → returns share_url
+   - publish({ project_id }) → returns share_url (Descript picks Video, or Audio for audio-only compositions)
 
 2. Edit existing project:
    - listProjects({ name: '...' }) to find it (if you don't have the ID)
@@ -72,7 +72,7 @@ Rules:
 - Never fabricate job results. The tools return the real job status — trust them.
 - When chaining import → edit, wait for importMedia to complete (status: "success") before calling agentEdit.
 - If status is "partial", surface that to the user — partial means some operations succeeded but others didn't.
-- For publish, default to Video at 1080p unless the user specifies otherwise.
+- For publish, omit media_type and resolution unless the user asks for them: Descript publishes audio-only compositions as Audio and rejects an explicit Video request for them.
 - If a tool call returns status "error" or "cancelled", summarize its error message for the user without retrying.
 - Only queued or running jobs can be cancelled (cancelJob). If a user asks to cancel a job that has already stopped or was cancelled, tell them it has already finished rather than attempting to cancel.
 - Only agentEdit invokes Underlord (the AI) and spends AI credits. Imports, publishes, reads, and cancels do NOT call Underlord — don't imply they cost AI credits.

@@ -13,7 +13,7 @@ export const agentEditInput = z.object({
     .string()
     .optional()
     .describe(
-      'Underlord model id or alias (e.g. "claude-haiku-4.5", "claude-opus"). Omit to use the configured default (DESCRIPT_AGENT_MODEL, claude-haiku-4.5 — the low-cost tier). The catalog changes as models launch and retire: call listAgentModels for live ids/aliases and cost tiers. Override with a stronger model only for complex edits.',
+      'Underlord model id or alias (e.g. "claude-haiku", "claude-sonnet", "claude-haiku-5.5"). Aliases track the current stable Descript model. Omit to use the configured default (DESCRIPT_AGENT_MODEL, the claude-haiku alias — the low-cost tier). The catalog changes as models launch and retire: call listAgentModels for live ids/aliases and cost tiers. Override with a stronger model only for complex edits.',
     ),
   callback_url: z
     .string()

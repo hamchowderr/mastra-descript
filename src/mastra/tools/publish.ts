@@ -6,9 +6,12 @@ import { env } from '../../lib/env';
 
 export const publishInput = z.object({
   project_id: z.string().uuid(),
-  composition_id: z.string().optional().describe('Optional composition UUID. Defaults to the primary composition if omitted.'),
-  media_type: z.enum(['Video', 'Audio']).default('Video'),
-  resolution: z.enum(['480p', '720p', '1080p', '1440p', '4K']).default('1080p').describe('Resolution — Video only. Ignored for Audio.'),
+  composition_id: z.string().optional().describe('Optional composition UUID, 5-character short id, or composition URL. Omit to publish the first composition that has content.'),
+  media_type: z
+    .enum(['Video', 'Audio'])
+    .optional()
+    .describe('Omit to let Descript decide: Video, or Audio when the composition has no video. Requesting Video for an audio-only composition is rejected (422).'),
+  resolution: z.enum(['480p', '720p', '1080p', '1440p', '4K']).optional().describe('Video only; ignored for Audio. Omit for the Descript default.'),
   access_level: z.enum(['public', 'unlisted', 'drive', 'private']).optional().describe('Access level. Defaults to drive settings. May return 403 if requested level is not permitted.'),
   callback_url: z
     .string()
@@ -34,7 +37,7 @@ export async function runPublish(context: z.infer<typeof publishInput>): Promise
     project_id: context.project_id,
     composition_id: context.composition_id,
     media_type: context.media_type,
-    resolution: context.media_type === 'Video' ? context.resolution : undefined,
+    resolution: context.media_type === 'Audio' ? undefined : context.resolution,
     access_level: context.access_level,
     callback_url: context.callback_url,
   });
