@@ -20,7 +20,7 @@ await writeFile(path.join(outside, 'secret.mp3'), 'SECRET');
 // 'junction' needs no admin rights on Windows; other platforms ignore the type and make a dir symlink.
 await symlink(outside, path.join(workspace, 'uploads', 'escape'), 'junction');
 
-const { buildImportPayload, checkImportOptions, defaultMediaName, importMediaInput, resolveUploadFile, runImportMedia, uniqueMediaNames } = await import('./import-media');
+const { buildImportPayload, checkImportOptions, checkMultitrack, defaultMediaName, importMediaInput, resolveUploadFile, runImportMedia, uniqueMediaNames } = await import('./import-media');
 
 const SIGNED_URL = 'https://uploads.descript.test/signed/clip?sig=abc';
 const JOB_ID = 'job-123';
@@ -105,6 +105,68 @@ describe('buildImportPayload', () => {
   it('omits language so Descript auto-detects it', () => {
     const payload = buildImportPayload({ project_name: 'P', media: [{ key: 'a.mp4', url: 'https://cdn.test/a.mp4' }] });
     expect(payload.add_media['a.mp4']).not.toHaveProperty('language');
+  });
+});
+
+describe('multitrack', () => {
+  it('builds the spec v1.2 multitrack_sequence example', () => {
+    const payload = buildImportPayload({
+      project_name: 'Interview Edit',
+      composition_name: 'Rough Cut',
+      width: 1920,
+      height: 1080,
+      media: [
+        { key: 'Misc/intro.mp4', url: 'https://example.com/intro.mp4' },
+        { key: 'Recordings/camera1.mp4', url: 'https://example.com/camera1.mp4' },
+        { key: 'Recordings/camera2.mp4', url: 'https://example.com/camera2.mp4' },
+      ],
+      multitrack: [{ key: 'Multicam_Track', tracks: [{ media: 2, offset: 0 }, { media: 3, offset: 50 }] }],
+    });
+    // Same structure as the spec's example request for POST /jobs/import/project_media.
+    expect(payload.add_media).toEqual({
+      'Misc/intro.mp4': { url: 'https://example.com/intro.mp4' },
+      'Recordings/camera1.mp4': { url: 'https://example.com/camera1.mp4' },
+      'Recordings/camera2.mp4': { url: 'https://example.com/camera2.mp4' },
+      Multicam_Track: { tracks: [{ media: 'Recordings/camera1.mp4', offset: 0 }, { media: 'Recordings/camera2.mp4', offset: 50 }] },
+    });
+    expect(payload.add_compositions).toEqual([
+      { name: 'Rough Cut', width: 1920, height: 1080, clips: [{ media: 'Misc/intro.mp4' }, { media: 'Multicam_Track' }] },
+    ]);
+  });
+
+  it('places the multitrack where its first track was, and omits unset offsets', () => {
+    const payload = buildImportPayload({
+      project_name: 'P',
+      media: [{ key: 'host.wav', url: 'https://x/h.wav' }, { key: 'outro.mp3', url: 'https://x/o.mp3' }, { key: 'guest.wav', url: 'https://x/g.wav' }],
+      multitrack: [{ key: 'Episode', tracks: [{ media: 1 }, { media: 3, offset: 1.5 }] }],
+    });
+    expect(payload.add_compositions[0].clips).toEqual([{ media: 'Episode' }, { media: 'outro.mp3' }]);
+    expect(payload.add_media.Episode).toEqual({ tracks: [{ media: 'host.wav' }, { media: 'guest.wav', offset: 1.5 }] });
+  });
+
+  it('rejects tracks that point nowhere, reuse media, or are muted', () => {
+    const media = [{}, {}, { mute: true }];
+    expect(checkMultitrack(media, [{ tracks: [{ media: 1 }, { media: 2 }] }])).toBeUndefined();
+    expect(checkMultitrack(media, [{ tracks: [{ media: 4 }] }])).toMatch(/does not exist/);
+    expect(checkMultitrack(media, [{ tracks: [{ media: 1 }] }, { tracks: [{ media: 1 }] }])).toMatch(/more than one/);
+    expect(checkMultitrack(media, [{ tracks: [{ media: 3 }] }])).toMatch(/cannot be muted/);
+  });
+
+  it('sends a multitrack import with default names and no request on bad input', async () => {
+    const { calls, fetchMock } = fakeDescript();
+    await runImportMedia(
+      input({
+        media: [{ url: 'https://cdn.test/cam1.mp4' }, { url: 'https://cdn.test/cam2.mp4' }],
+        multitrack: [{ tracks: [{ media: 1 }, { media: 2, offset: 2 }] }],
+      }),
+    );
+    const { add_media, add_compositions } = JSON.parse(new TextDecoder().decode(calls.find((c) => c.method === 'POST')!.body));
+    expect(add_media['Multitrack 1']).toEqual({ tracks: [{ media: 'cam1.mp4' }, { media: 'cam2.mp4', offset: 2 }] });
+    expect(add_compositions[0].clips).toEqual([{ media: 'Multitrack 1' }]);
+
+    fetchMock.mockClear();
+    await expect(runImportMedia(input({ media: [{ url: 'https://cdn.test/a.mp4' }], multitrack: [{ tracks: [{ media: 2 }] }] }))).rejects.toThrow(/does not exist/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

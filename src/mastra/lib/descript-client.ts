@@ -249,7 +249,8 @@ export class DescriptClient {
     folder_name?: string;
     /** New projects only. `Personal`, `General`, or a custom workspace name (case-insensitive; unknown → 404). */
     workspace_name?: string;
-    add_media: Record<string, { url?: string; content_type?: string; file_size?: number; language?: string }>;
+    /** Keys are display names (optional folder path). Values: URL import, direct upload, or a Multitrack Sequence of other keys. */
+    add_media: Record<string, { url?: string; content_type?: string; file_size?: number; language?: string } | { tracks: Array<{ media: string; offset?: number }> }>;
     add_compositions?: Array<{
       name?: string;
       /** Pixels; Descript defaults to 1920×1080. */

@@ -122,8 +122,33 @@ export async function resolveUploadFile(filePath: string, root: string): Promise
   return { absPath, content_type, file_size: info.size };
 }
 
+/** A Multitrack Sequence: media items (by 1-based position in `media`) played together, each with an optional sync offset. */
+export type MultitrackInput = { name?: string; tracks: Array<{ media: number; offset?: number }> };
+
+/**
+ * Pure: reject multitrack input Descript can't use, before any job is submitted. Each track must point
+ * at an existing media item, a media item can belong to only one multitrack, and media inside a
+ * multitrack are not composition clips, so `mute` can't apply to them.
+ */
+export function checkMultitrack(media: Array<{ mute?: boolean }>, multitrack: MultitrackInput[] = []): string | undefined {
+  const used = new Map<number, number>();
+  for (const [s, seq] of multitrack.entries()) {
+    for (const t of seq.tracks) {
+      if (!Number.isInteger(t.media) || t.media < 1 || t.media > media.length) {
+        return `Multitrack ${s + 1}: track media ${t.media} does not exist (media has ${media.length} item(s), numbered from 1).`;
+      }
+      if (used.has(t.media)) return `Media item ${t.media} is used in more than one multitrack track; each media item can be one track only.`;
+      used.set(t.media, s);
+      if (media[t.media - 1].mute) return `Media item ${t.media} is a multitrack track, so it is not a composition clip and cannot be muted.`;
+    }
+  }
+  return undefined;
+}
+
 export function buildImportPayload(input: {
   media: Array<{ key: string; url?: string; upload?: { content_type: string; file_size: number }; language?: string; mute?: boolean }>;
+  /** Already-validated multitracks with their final display-name keys. */
+  multitrack?: Array<{ key: string; tracks: Array<{ media: number; offset?: number }> }>;
   project_name?: string;
   project_id?: string;
   team_access?: 'edit' | 'comment' | 'view' | 'none';
@@ -133,14 +158,31 @@ export function buildImportPayload(input: {
   width?: number;
   height?: number;
 }) {
-  const add_media: Record<string, { url?: string; content_type?: string; file_size?: number; language?: string }> = {};
+  type MediaEntry = { url?: string; content_type?: string; file_size?: number; language?: string } | { tracks: Array<{ media: string; offset?: number }> };
+  const add_media: Record<string, MediaEntry> = {};
   const clips: Array<{ media: string; mute?: boolean }> = [];
-  for (const m of input.media) {
+  // A multitrack replaces its tracks in the clip list, at the position of its first track.
+  const sequenceAt = new Map<number, string>();
+  const inSequence = new Set<number>();
+  for (const seq of input.multitrack ?? []) {
+    const positions = seq.tracks.map((t) => t.media);
+    positions.forEach((p) => inSequence.add(p));
+    sequenceAt.set(Math.min(...positions), seq.key);
+  }
+  input.media.forEach((m, i) => {
     const language = m.language ? { language: m.language } : {};
     add_media[m.key] = m.upload
       ? { content_type: m.upload.content_type, file_size: m.upload.file_size, ...language }
       : { url: m.url, ...language };
-    clips.push(m.mute ? { media: m.key, mute: true } : { media: m.key });
+    const position = i + 1;
+    const sequenceKey = sequenceAt.get(position);
+    if (sequenceKey) clips.push({ media: sequenceKey });
+    else if (!inSequence.has(position)) clips.push(m.mute ? { media: m.key, mute: true } : { media: m.key });
+  });
+  for (const seq of input.multitrack ?? []) {
+    add_media[seq.key] = {
+      tracks: seq.tracks.map((t) => (t.offset != null ? { media: input.media[t.media - 1].key, offset: t.offset } : { media: input.media[t.media - 1].key })),
+    };
   }
   const size = input.width != null && input.height != null ? { width: input.width, height: input.height } : {};
   return {
@@ -236,6 +278,24 @@ export const importMediaInput = z.object({
     .optional()
     .describe('Composition width in pixels. Pass together with height. Vertical (Shorts/Reels/TikTok) = 1080 × 1920; square = 1080 × 1080. Omit both for 1920 × 1080.'),
   height: z.number().int().min(16).max(7680).optional().describe('Composition height in pixels. Pass together with width.'),
+  multitrack: z
+    .array(
+      z.object({
+        name: z.string().optional().describe('Display name for the multitrack in the project (default "Multitrack 1", "Multitrack 2"…).'),
+        tracks: z
+          .array(
+            z.object({
+              media: z.number().int().min(1).describe('Which media item is this track: its 1-based position in `media`.'),
+              offset: z.number().optional().describe('Seconds to shift this track to sync it with the others (default 0).'),
+            }),
+          )
+          .min(1),
+      }),
+    )
+    .optional()
+    .describe(
+      'Optional Multitrack Sequences: media items played TOGETHER as synced tracks (e.g. two camera angles, or host + guest mics recorded separately), instead of one after another. Each media item can be in one multitrack; the multitrack takes the place of its tracks in the composition, at the position of its first track.',
+    ),
   skip_url_validation: z
     .boolean()
     .default(false)
@@ -265,6 +325,8 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
   if (optionError) throw new Error(optionError);
   const badItem = context.media.findIndex((m) => Boolean(m.url) === Boolean(m.file_path));
   if (badItem !== -1) throw new Error(`Media item ${badItem + 1}: provide exactly one of url or file_path.`);
+  const multitrackError = checkMultitrack(context.media, context.multitrack);
+  if (multitrackError) throw new Error(multitrackError);
   if (!context.skip_url_validation) {
     const urls = context.media.flatMap((m) => (m.url ? [m.url] : []));
     const checks = await Promise.all(urls.map(async (url) => ({ url, result: await validateMediaUrl(url) })));
@@ -284,7 +346,13 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
   const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
   // Adding to an existing project: read its current media names (free) so new names don't conflict.
   const existing = context.project_id ? Object.keys((await client.getProject(context.project_id)).media_files ?? {}) : [];
-  const keys = uniqueMediaNames(context.media.map((m, i) => defaultMediaName(m, i)), existing);
+  const multitrack = context.multitrack ?? [];
+  const names = uniqueMediaNames(
+    [...context.media.map((m, i) => defaultMediaName(m, i)), ...multitrack.map((seq, i) => seq.name?.trim() || `Multitrack ${i + 1}`)],
+    existing,
+  );
+  const keys = names.slice(0, context.media.length);
+  const sequenceKeys = names.slice(context.media.length);
   const job = await client.importMedia({
     ...buildImportPayload({
       ...context,
@@ -295,6 +363,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
         language: m.language,
         mute: m.mute,
       })),
+      multitrack: multitrack.map((seq, i) => ({ key: sequenceKeys[i], tracks: seq.tracks })),
     }),
     callback_url: context.callback_url,
   });
@@ -333,7 +402,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
 export const importMedia = createTool({
   id: 'importMedia',
   description:
-    'Import one or more media files into a Descript project — from publicly-accessible URLs, or uploaded directly from local files in the agent workspace (file_path). Creates a new project if project_name is provided, or adds to an existing project if project_id is provided. All media are added as clips of a single composition, in the order given; set width/height for vertical (1080×1920) or square compositions, and workspace_name/folder_name to place a new project. Polls until the import job completes. Returns the project_id, project_url, media_count, and final job status. COST: spends media minutes (transcription of the imported media); does NOT invoke Underlord or spend AI credits.',
+    'Import one or more media files into a Descript project — from publicly-accessible URLs, or uploaded directly from local files in the agent workspace (file_path). Creates a new project if project_name is provided, or adds to an existing project if project_id is provided. All media are added as clips of a single composition, in the order given, unless grouped into a multitrack (synced tracks played together, e.g. camera angles or separate mics); set width/height for vertical (1080×1920) or square compositions, and workspace_name/folder_name to place a new project. Polls until the import job completes. Returns the project_id, project_url, media_count, and final job status. COST: spends media minutes (transcription of the imported media); does NOT invoke Underlord or spend AI credits.',
   inputSchema: importMediaInput,
   outputSchema: importMediaOutput,
   execute: (context) => runImportMedia(context),
