@@ -358,8 +358,16 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
   );
   const callbackUrl = resolveCallbackUrl(context);
   const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
-  // Adding to an existing project: read its current media names (free) so new names don't conflict.
-  const existing = context.project_id ? Object.keys((await client.getProject(context.project_id)).media_files ?? {}) : [];
+  // Adding to an existing project: read it (free) so new media, multitrack and composition names don't
+  // clash with what is there. Descript stores multitracks under "Sequences/<name>", and every import
+  // creates a new composition (there is no "append to an existing composition"), so a second import
+  // would otherwise add another composition with the same name, e.g. a second "Main".
+  const project = context.project_id ? await client.getProject(context.project_id) : undefined;
+  const existingMedia = Object.keys(project?.media_files ?? {});
+  const existing = [...existingMedia, ...existingMedia.filter((k) => k.startsWith('Sequences/')).map((k) => k.slice('Sequences/'.length))];
+  const compositionName = project
+    ? uniqueMediaNames([context.composition_name], project.compositions.map((c) => c.name))[0]
+    : context.composition_name;
   const multitrack = context.multitrack ?? [];
   const names = uniqueMediaNames(
     [...context.media.map((m, i) => defaultMediaName(m, i)), ...multitrack.map((seq, i) => seq.name?.trim() || `Multitrack ${i + 1}`)],
@@ -370,6 +378,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
   const job = await client.importMedia({
     ...buildImportPayload({
       ...context,
+      composition_name: compositionName,
       media: resolved.map((m, i) => ({
         key: keys[i],
         url: m.url,
