@@ -62,6 +62,9 @@ const envSchema = z
     DOLT_USER: z.string().optional(),
     DOLT_PASSWORD: z.string().optional(),
     DOLT_DATABASE: z.string().optional(),
+    // Attribution written into every Dolt commit by the Dolt tools.
+    AGENT_PERSONA: z.string().default('Mastra Agent <agent@otaku.local>'),
+    DIRECTOR: z.string().default('operator'),
 
     ANTHROPIC_API_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
@@ -70,10 +73,10 @@ const envSchema = z
     USE_AIMOCK: boolish.default(false),
     AIMOCK_URL: z.string().url().default('http://localhost:4010'),
 
-    E2E_BASE_URL: z.string().url().optional(),
-
     MASTRA_TELEMETRY_DISABLED: z.string().optional(),
-    MASTRA_CLOUD_ACCESS_TOKEN: z.string().optional(),
+    // Hosted Mastra Observe: traces are also exported there when BOTH are set.
+    MASTRA_PLATFORM_ACCESS_TOKEN: z.string().optional(),
+    MASTRA_PROJECT_ID: z.string().optional(),
 
     // Shared HMAC secret for JWT auth (@mastra/auth). When set, the server
     // gates all /api/* routes AND Studio behind a Bearer JWT signed with this

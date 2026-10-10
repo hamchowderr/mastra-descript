@@ -16,7 +16,7 @@ description: Use when the user wants short-form social clips, reels, shorts, Tik
 
 "Create a new composition named '<clip name>' containing only the section from '<first words>' to '<last words>'. Make it 9:16 vertical, add animated captions, and remove filler words. Apply directly."
 
-Then `publish` the new composition (pass its `composition_id` if the edit result returned one; otherwise `getProject` to find it).
+Then `publish` the new composition: agentEdit does not return a composition id, so call `getProject` and pass the new composition's `id` as `composition_id`.
 
 ## Captions only (free)
 

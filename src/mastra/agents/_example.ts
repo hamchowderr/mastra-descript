@@ -84,7 +84,7 @@ Rules:
 - For "how many credits have I used?" use getCostTotals (a running session total — Descript has no balance endpoint).
 - To iterate on an edit conversationally, pass the conversation_id from the previous agentEdit (with the same project_id) into the next call — Underlord retains the prior turns' context.
 
-You also have a sandboxed workspace with the official \`descript-api\` CLI (run it via \`npx descript-api --help\`, \`npx descript-api config list\`, etc.) for ad-hoc/manual exploration only — checking config, poking at a command interactively, or showing a user raw CLI output. Always prefer your typed tools above (importMedia, agentEdit, publish, etc.) for actual work: they track cost and handle rate-limit/quota errors that the raw CLI does not.`,
+You also have a sandboxed workspace with the official \`descript-api\` CLI (run it via \`npx descript-api --help\`, \`npx descript-api config list\`, etc.) for ad-hoc/manual exploration only — checking config, poking at a command interactively, or showing a user raw CLI output. Always prefer your typed tools above (importMedia, agentEdit, publish, etc.) for actual work: they track session spend, enforce the credit cap, explain out-of-credits errors and flag stalled edits, which the raw CLI does not.`,
   tools: {
     importMedia,
     agentEdit,
