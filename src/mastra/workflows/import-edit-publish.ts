@@ -96,8 +96,8 @@ const editStep = createStep({
       }),
     );
     const next = { ...inputData, edit: r };
-    if (r.status === 'failed' || r.project_changed === false) {
-      return { ...next, failure: { failed_step: 'edit', error: r.error ?? 'Underlord did not change the project (stalled) — refine the prompt.' } };
+    if (r.status !== 'success') {
+      return { ...next, failure: { failed_step: 'edit', error: r.error ?? `Edit finished with status ${r.status ?? 'unknown'}` } };
     }
     return next;
   },

@@ -2,21 +2,41 @@ import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { env } from '../../lib/env';
 
+/** Spec v1.2 JobStatus.job_state. Only `stopped` and `cancelled` are terminal. */
+export type JobState = 'queued' | 'running' | 'stopped' | 'cancelled';
+
 export type DescriptJob = {
   job_id: string;
   job_type: string;
-  job_state: 'running' | 'stopped';
+  job_state: JobState;
   created_at: string;
   stopped_at?: string;
   drive_id: string;
   project_id?: string;
   project_url?: string;
-  progress?: { label: string; last_update_at: string };
+  progress?: { label?: string; percent?: number; last_update_at?: string };
+  /** Spec: *SuccessResult has status success|partial; *ErrorResult has status "error" + error_message (+ error_code). */
   result?: {
-    status?: 'success' | 'partial' | 'failed';
+    status?: 'success' | 'partial' | 'error';
+    error_message?: string;
+    error_code?: string;
     [key: string]: unknown;
   };
 };
+
+/** What a finished job means for the caller. `cancelled` comes from job_state, not result.status. */
+export const JOB_OUTCOMES = ['success', 'partial', 'error', 'cancelled'] as const;
+export type JobOutcome = (typeof JOB_OUTCOMES)[number];
+
+export function jobOutcome(job: DescriptJob): { status?: JobOutcome; error?: string } {
+  if (job.job_state === 'cancelled') return { status: 'cancelled', error: 'The job was cancelled before it finished.' };
+  const r = job.result;
+  if (r?.status === 'error') {
+    const message = typeof r.error_message === 'string' && r.error_message ? r.error_message : 'The job failed (Descript returned no error message).';
+    return { status: 'error', error: typeof r.error_code === 'string' && r.error_code ? `${message} (${r.error_code})` : message };
+  }
+  return { status: r?.status };
+}
 
 export type AgentModelCost = 'low' | 'medium' | 'high';
 
@@ -191,11 +211,11 @@ export class DescriptClient {
     }
   }
 
-  /** Poll a job until job_state !== "running". Throws if max attempts exceeded. */
+  /** Poll a job until it reaches a terminal state (stopped or cancelled); queued and running keep polling. Throws if max attempts exceeded. */
   async pollJob(jobId: string): Promise<DescriptJob> {
     for (let attempt = 0; attempt < this.pollMaxAttempts; attempt++) {
       const job = await this.getJob(jobId);
-      if (job.job_state !== 'running') return job;
+      if (job.job_state === 'stopped' || job.job_state === 'cancelled') return job;
       await new Promise((r) => setTimeout(r, this.pollIntervalMs));
     }
     throw new Error(

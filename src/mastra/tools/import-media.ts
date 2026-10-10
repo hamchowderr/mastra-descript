@@ -2,7 +2,7 @@ import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { DescriptClient, uploadToSignedUrl } from '../lib/descript-client';
+import { DescriptClient, JOB_OUTCOMES, jobOutcome, uploadToSignedUrl } from '../lib/descript-client';
 import { costMeter } from '../lib/cost-meter';
 import { env } from '../../lib/env';
 
@@ -195,7 +195,7 @@ export const importMediaOutput = z.object({
   project_url: z.string(),
   media_count: z.number(),
   media_seconds_used: z.number().optional().describe('Media-seconds consumed (transcription). No AI credits — import never invokes Underlord.'),
-  status: z.enum(['success', 'partial', 'failed']).optional(),
+  status: z.enum(JOB_OUTCOMES).optional().describe('success | partial (some files failed) | error | cancelled. Absent in webhook mode.'),
   error: z.string().optional(),
 });
 
@@ -255,7 +255,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
     return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, media_count: context.media.length, media_seconds_used: undefined, status: undefined, error: undefined };
   }
   const final = await client.pollJob(job.job_id);
-  const status = final.result?.status as 'success' | 'partial' | 'failed' | undefined;
+  const { status, error } = jobOutcome(final);
   const mediaSeconds = typeof final.result?.media_seconds_used === 'number' ? final.result.media_seconds_used : undefined;
   costMeter.addMediaSeconds(mediaSeconds);
   return {
@@ -265,7 +265,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
     media_count: context.media.length,
     media_seconds_used: mediaSeconds,
     status,
-    error: status === 'failed' ? String(final.result?.error ?? 'Import failed') : undefined,
+    error,
   };
 }
 

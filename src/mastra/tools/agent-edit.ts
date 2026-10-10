@@ -1,6 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { DescriptClient } from '../lib/descript-client';
+import { DescriptClient, JOB_OUTCOMES, jobOutcome } from '../lib/descript-client';
 import { costMeter } from '../lib/cost-meter';
 import { env } from '../../lib/env';
 
@@ -30,7 +30,7 @@ export const agentEditOutput = z.object({
   job_id: z.string(),
   project_id: z.string(),
   project_url: z.string(),
-  status: z.enum(['success', 'partial', 'failed']).optional(),
+  status: z.enum(JOB_OUTCOMES).optional().describe('success | partial (ran but changed nothing — stalled) | error | cancelled. Absent in webhook mode.'),
   ai_credits_used: z.number().optional(),
   agent_response: z.string().optional(),
   project_changed: z.boolean().optional(),
@@ -51,7 +51,7 @@ export async function runAgentEdit(context: z.infer<typeof agentEditInput>): Pro
   }
   const final = await client.pollJob(job.job_id);
   const result = final.result ?? {};
-  const apiStatus = result.status as 'success' | 'partial' | 'failed' | undefined;
+  const outcome = jobOutcome(final);
   const aiCredits = typeof result.ai_credits_used === 'number' ? result.ai_credits_used : undefined;
   const projectChanged = typeof result.project_changed === 'boolean' ? result.project_changed : undefined;
   const mediaSeconds = typeof result.media_seconds_used === 'number' ? result.media_seconds_used : undefined;
@@ -59,24 +59,21 @@ export async function runAgentEdit(context: z.infer<typeof agentEditInput>): Pro
   costMeter.addMediaSeconds(mediaSeconds);
   // nhk.5: Underlord can report success while project_changed=false — it stalled at the
   // creative-brief/plan-approval step and built nothing. Surface that as a distinct non-success.
-  const stalled = apiStatus !== 'failed' && projectChanged === false;
+  const stalled = outcome.status === 'success' && projectChanged === false;
   return {
     job_id: job.job_id,
     project_id: job.project_id,
     project_url: job.project_url,
-    status: stalled ? 'partial' : apiStatus,
+    status: stalled ? 'partial' : outcome.status,
     ai_credits_used: aiCredits,
     agent_response: typeof result.agent_response === 'string' ? result.agent_response : undefined,
     project_changed: projectChanged,
     conversation_id: typeof result.conversation_id === 'string' ? result.conversation_id : undefined,
     resolved_model: typeof result.resolved_model === 'string' ? result.resolved_model : undefined,
     media_seconds_used: mediaSeconds,
-    error:
-      apiStatus === 'failed'
-        ? String(result.error ?? 'Agent edit failed')
-        : stalled
-          ? 'Underlord returned success but project_changed=false — the edit did NOT execute (it likely stalled awaiting creative-brief/plan approval). Re-run with a more explicit, directive prompt.'
-          : undefined,
+    error: stalled
+      ? 'Underlord returned success but project_changed=false — the edit did NOT execute (it likely stalled awaiting creative-brief/plan approval). Re-run with a more explicit, directive prompt.'
+      : outcome.error,
   };
 }
 
