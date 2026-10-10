@@ -323,7 +323,7 @@ Behavior was checked in three passes. Spending runs used a small budget approved
 
 **October 2026, spec audit:** every tool was compared field by field with Descript's OpenAPI spec v1.2, the live model catalog, and the supported-file-types page. Fixes: failed jobs (`status: "error"` with `error_message`) and queued jobs were misread · media got placeholder names and a forced English transcription language · publish forced Video, which Descript rejects for audio-only compositions · the default model id had been retired · the upload allow-list missed about 15 supported file types · job-creating requests were retried after server errors.
 
-**October 2026, live check** (0 AI credits, about 15 media-seconds): file import with real names · re-import into the same project renamed (`host (2).mp3`) instead of rejected · a Multitrack Sequence with a 0.5 s offset · publish of an audio-only composition chose Audio · the webhook receiver recorded a real finished job once and ignored the replay.
+**October 2026, live check** (about 15 media-seconds, plus 2.3 AI credits for one edit): file import with real names · re-import into the same project renamed (`host (2).mp3`) instead of rejected · a Multitrack Sequence with a 0.5 s offset · publish of an audio-only composition chose Audio · the webhook receiver recorded a real finished job once and ignored the replay · an Underlord edit with the default `claude-haiku` alias ran on `claude-haiku-5.5` and succeeded.
 
 **Where the live API differs from the spec (v1.2):**
 
@@ -331,6 +331,7 @@ Behavior was checked in three passes. Spending runs used a small budget approved
 - Each import creates a new composition; there is no way to add clips to an existing composition, so the agent names repeat imports uniquely (`Main (2)`).
 - Multitrack Sequences are stored as media named `Sequences/<name>`.
 - `GET /jobs` results include `publish` jobs, though the `type` filter accepts only `import/project_media` and `agent`.
+- `ai_credits_used` is typed as an integer, but the API returns fractions (a composition rename reported `2.3130002`). Agent job ids are `project-agent-edit-<project_id>-<uuid>`.
 
 ---
 
