@@ -37,6 +37,14 @@ const envSchema = z
     TURSO_DATABASE_URL: z.string().default('file:./mastra.db').transform(absoluteFileUrl),
     TURSO_AUTH_TOKEN: z.string().optional(),
 
+    // DuckDB file for the observability (traces/metrics) domain. Resolved to an absolute
+    // path above `.mastra` for the same reason as the libSQL URL; in Docker, point it at
+    // the persistent volume (docker-compose.yml sets /app/data/mastra.duckdb).
+    DUCKDB_PATH: z
+      .string()
+      .default('./mastra.duckdb')
+      .transform((p) => (p === ':memory:' ? p : path.resolve(projectRoot(), p))),
+
     // Root dir for the Descript CLI workspace sandbox (filesystem + shell) —
     // it reads/writes files and runs `descript-api` here. Set an absolute path
     // for a stable location; a relative path is resolved to absolute at load.

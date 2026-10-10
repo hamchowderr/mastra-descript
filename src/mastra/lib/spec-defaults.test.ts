@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const PROJECT_ID = '9f36ee32-5a2c-47e7-b1a3-94991d3e3ddb';
@@ -73,5 +74,19 @@ describe('request defaults', () => {
     await runPublish(publishInput.parse({ project_id: PROJECT_ID, media_type: 'Audio', resolution: '1080p' }));
     expect(posts[0].body).toMatchObject({ media_type: 'Audio' });
     expect(posts[0].body).not.toHaveProperty('resolution');
+  });
+});
+
+describe('DUCKDB_PATH', () => {
+  it('resolves to an absolute path so dev and build use one file', async () => {
+    const { env } = await import('../../lib/env');
+    expect(env.DUCKDB_PATH.endsWith('mastra.duckdb')).toBe(true);
+    expect(isAbsolute(env.DUCKDB_PATH)).toBe(true);
+  });
+
+  it('honours an explicit path and :memory:', async () => {
+    vi.stubEnv('DUCKDB_PATH', ':memory:');
+    const { env } = await import('../../lib/env');
+    expect(env.DUCKDB_PATH).toBe(':memory:');
   });
 });

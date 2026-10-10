@@ -70,7 +70,7 @@ export const mastra = new Mastra({
     default: getSharedStore(),
     editor: getSharedStore(),
     domains: {
-      observability: await new DuckDBStore().getStore('observability'),
+      observability: await new DuckDBStore({ path: env.DUCKDB_PATH }).getStore('observability'),
     },
   }),
   logger: new PinoLogger({
