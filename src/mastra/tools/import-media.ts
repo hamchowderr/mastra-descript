@@ -12,7 +12,11 @@ const mediaItem = z.object({
     .string()
     .optional()
     .describe('A local file to upload directly (no public URL needed), relative to the agent workspace folder (WORKSPACE_ROOT, default ./agent-workspace), e.g. "uploads/interview.mp4". Files outside that folder are rejected. Formats: mp4, mov, wav, flac, aac, m4a, mp3. Provide exactly one of url or file_path.'),
-  language: z.string().default('en').describe('ISO 639-1 language code of the audio/video for transcription'),
+  name: z
+    .string()
+    .optional()
+    .describe('Display name for this media in the Descript project, optionally with a folder path (e.g. "Interviews/guest.mp4"). Defaults to the file or URL file name. Names are made unique automatically.'),
+  language: z.string().optional().describe('ISO 639-1 language code for transcription (e.g. "en", "es"). Omit to let Descript auto-detect the language.'),
   mute: z
     .boolean()
     .optional()
@@ -25,16 +29,71 @@ const mediaItem = z.object({
  * media key, in array order. Kept separate from `execute` so it's unit-testable
  * without hitting the API (a real import consumes media minutes).
  */
-/** Media accepted by Descript's import, by extension (spec: MP4, MOV, WAV, FLAC, AAC, MP3; m4a is AAC). */
+/**
+ * File types Descript documents as supported, by extension, with the MIME type sent as content_type.
+ * Source: help.descript.com/add-and-manage-media/supported-file-types (checked 2026-10-09).
+ * Unsupported there: OGG, WMA, MTS, OGV, AVI, WMV and documents (DOCX, TXT, RTF). Max size is 1-50 GB by plan.
+ */
 export const UPLOAD_CONTENT_TYPES: Record<string, string> = {
-  '.mp4': 'video/mp4',
-  '.mov': 'video/quicktime',
+  // audio
   '.wav': 'audio/wav',
-  '.flac': 'audio/flac',
-  '.aac': 'audio/aac',
-  '.m4a': 'audio/mp4',
   '.mp3': 'audio/mpeg',
+  '.aiff': 'audio/aiff',
+  '.aif': 'audio/aiff',
+  '.m4a': 'audio/mp4',
+  '.flac': 'audio/flac',
+  '.opus': 'audio/opus',
+  '.aac': 'audio/aac',
+  // video
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/x-m4v',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
+  '.mxf': 'application/mxf',
+  // image
+  '.bmp': 'image/bmp',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.heic': 'image/heic',
+  // other
+  '.pdf': 'application/pdf',
 };
+
+/** The display name a media item gets by default: its own `name`, else the file or URL file name. */
+export function defaultMediaName(m: { name?: string; url?: string; file_path?: string }, index: number): string {
+  if (m.name?.trim()) return m.name.trim();
+  if (m.file_path) return path.basename(m.file_path);
+  if (m.url) {
+    try {
+      const base = decodeURIComponent(new URL(m.url).pathname.split('/').filter(Boolean).pop() ?? '');
+      if (base) return base;
+    } catch {
+      // fall through to the generic name
+    }
+  }
+  return `media-${index + 1}`;
+}
+
+/**
+ * Pure: make display names unique against each other and against names already in the project
+ * (spec: importing into an existing project fails with 400 if a media filename conflicts).
+ * Clashes get " (2)", " (3)"… before the extension. Comparison is case-insensitive.
+ */
+export function uniqueMediaNames(names: string[], existing: Iterable<string> = []): string[] {
+  const taken = new Set([...existing].map((n) => n.toLowerCase()));
+  return names.map((name) => {
+    const ext = path.extname(name);
+    const stem = ext ? name.slice(0, -ext.length) : name;
+    let candidate = name;
+    for (let n = 2; taken.has(candidate.toLowerCase()); n++) candidate = `${stem} (${n})${ext}`;
+    taken.add(candidate.toLowerCase());
+    return candidate;
+  });
+}
 
 /**
  * Resolve a model-supplied file path to a real file INSIDE `root`, or throw. The agent picks
@@ -64,7 +123,7 @@ export async function resolveUploadFile(filePath: string, root: string): Promise
 }
 
 export function buildImportPayload(input: {
-  media: Array<{ url?: string; upload?: { content_type: string; file_size: number }; language?: string; mute?: boolean }>;
+  media: Array<{ key: string; url?: string; upload?: { content_type: string; file_size: number }; language?: string; mute?: boolean }>;
   project_name?: string;
   project_id?: string;
   team_access?: 'edit' | 'comment' | 'view' | 'none';
@@ -74,16 +133,15 @@ export function buildImportPayload(input: {
   width?: number;
   height?: number;
 }) {
-  const add_media: Record<string, { url?: string; content_type?: string; file_size?: number; language: string }> = {};
+  const add_media: Record<string, { url?: string; content_type?: string; file_size?: number; language?: string }> = {};
   const clips: Array<{ media: string; mute?: boolean }> = [];
-  input.media.forEach((m, i) => {
-    const key = `clip${i + 1}`;
-    const language = m.language ?? 'en';
-    add_media[key] = m.upload
-      ? { content_type: m.upload.content_type, file_size: m.upload.file_size, language }
-      : { url: m.url, language };
-    clips.push(m.mute ? { media: key, mute: true } : { media: key });
-  });
+  for (const m of input.media) {
+    const language = m.language ? { language: m.language } : {};
+    add_media[m.key] = m.upload
+      ? { content_type: m.upload.content_type, file_size: m.upload.file_size, ...language }
+      : { url: m.url, ...language };
+    clips.push(m.mute ? { media: m.key, mute: true } : { media: m.key });
+  }
   const size = input.width != null && input.height != null ? { width: input.width, height: input.height } : {};
   return {
     project_name: input.project_name,
@@ -224,10 +282,14 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
     context.media.map(async (m) => (m.file_path ? { ...m, file: await resolveUploadFile(m.file_path, env.WORKSPACE_ROOT) } : { ...m, file: undefined })),
   );
   const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
+  // Adding to an existing project: read its current media names (free) so new names don't conflict.
+  const existing = context.project_id ? Object.keys((await client.getProject(context.project_id)).media_files ?? {}) : [];
+  const keys = uniqueMediaNames(context.media.map((m, i) => defaultMediaName(m, i)), existing);
   const job = await client.importMedia({
     ...buildImportPayload({
       ...context,
-      media: resolved.map((m) => ({
+      media: resolved.map((m, i) => ({
+        key: keys[i],
         url: m.url,
         upload: m.file ? { content_type: m.file.content_type, file_size: m.file.file_size } : undefined,
         language: m.language,
@@ -240,8 +302,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
   // once the bytes land. On any failure, cancel the job so it doesn't sit waiting for files.
   for (const [i, m] of resolved.entries()) {
     if (!m.file) continue;
-    const key = `clip${i + 1}`;
-    const target = job.upload_urls?.[key]?.upload_url;
+    const target = job.upload_urls?.[keys[i]]?.upload_url;
     try {
       if (!target) throw new Error(`Descript returned no upload URL for ${m.file_path}`);
       await uploadToSignedUrl(target, m.file.absPath, m.file.file_size);

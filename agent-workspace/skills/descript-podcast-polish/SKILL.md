@@ -13,7 +13,7 @@ description: Use when the user wants to clean up, polish or produce a podcast/in
 3. **Chapters (optional)** - follow up with the same `conversation_id`:
    "Add a marker at each major topic change, named after the topic. Apply directly."
 4. **Show notes** - `exportTranscript` with `format: "markdown"`, `include_speaker_labels: "changes"`, `include_markers: true`, `timecodes: { on_markers: true }`. Summarize into: title, 2-sentence summary, chapter list with timecodes, 3 pull quotes. This is free.
-5. **Publish** - `publish` with `media_type: "Audio"` for audio-only shows, otherwise Video 1080p. Return `share_url` and `download_url` (note the download link expires).
+5. **Publish** - `publish` without `media_type`: Descript publishes audio-only shows as Audio and video as Video. Return `share_url` and `download_url` (note the download link expires).
 
 For an unattended version of steps 1, 2 and 5 use the `importEditPublish` workflow; it pauses for approval before step 2.
 
