@@ -66,6 +66,9 @@ const envSchema = z
     AGENT_PERSONA: z.string().default('Mastra Agent <agent@otaku.local>'),
     DIRECTOR: z.string().default('operator'),
 
+    // LLM calls go through the Vercel AI Gateway: one key for every provider (src/mastra/lib/models.ts).
+    AI_GATEWAY_API_KEY: z.string().optional(),
+    // Direct provider keys are only used by AIMock mode (configureAIMock sets mock values).
     ANTHROPIC_API_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
@@ -106,10 +109,10 @@ const envSchema = z
     DESCRIPT_WEBHOOK_SECRET: z.string().min(32, 'DESCRIPT_WEBHOOK_SECRET must be at least 32 chars').optional(),
   })
   .refine(
-    (e) => Boolean(e.ANTHROPIC_API_KEY || e.OPENAI_API_KEY || e.GOOGLE_GENERATIVE_AI_API_KEY),
+    (e) => e.USE_AIMOCK || Boolean(e.AI_GATEWAY_API_KEY),
     {
       message:
-        'At least one LLM provider key required (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY)',
+        'AI_GATEWAY_API_KEY is required (Vercel AI Gateway; LLM calls route through it). Only USE_AIMOCK=true runs without it.',
     },
   );
 

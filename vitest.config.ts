@@ -7,7 +7,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     env: {
       APP_SECRET: 'test-secret-test-secret-test-secret-00',
-      ANTHROPIC_API_KEY: 'stub',
+      AI_GATEWAY_API_KEY: 'stub',
       DESCRIPT_API_TOKEN: 'test-descript-token',
       DESCRIPT_BASE_URL: 'https://descript.test/v1',
       DESCRIPT_RETRIES: '0',

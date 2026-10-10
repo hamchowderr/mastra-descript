@@ -50,7 +50,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
           MASTRA_TELEMETRY_DISABLED: '1'
           APP_SECRET: ${{ secrets.CI_APP_SECRET }}
-          ANTHROPIC_API_KEY: stub
+          AI_GATEWAY_API_KEY: stub
           DESCRIPT_API_TOKEN: stub
 
   eval:
