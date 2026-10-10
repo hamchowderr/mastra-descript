@@ -54,7 +54,12 @@ function fakeDescript({ uploadStatus = 200 } = {}) {
     }
     if (url.endsWith(`/jobs/${JOB_ID}`) && method === 'DELETE') return new Response(null, { status: 204 });
     if (url.endsWith(`/projects/${EXISTING_PROJECT}`) && method === 'GET') {
-      return Response.json({ id: EXISTING_PROJECT, name: 'Existing', media_files: { 'clip.mp3': { type: 'audio', duration: 3 } }, compositions: [] });
+      return Response.json({
+        id: EXISTING_PROJECT,
+        name: 'Existing',
+        media_files: { 'clip.mp3': { type: 'audio', duration: 3 }, 'Sequences/Multitrack 1': { type: 'sequence', duration: 6 } },
+        compositions: [{ id: 'c1', name: 'Main' }],
+      });
     }
     return new Response('unexpected request', { status: 500 });
   });
@@ -236,8 +241,25 @@ describe('runImportMedia', () => {
     await runImportMedia(input({ project_name: undefined, project_id: EXISTING_PROJECT, media: [{ file_path: 'uploads/clip.mp3' }] }));
 
     const submit = calls.find((c) => c.method === 'POST')!;
-    expect(Object.keys(JSON.parse(new TextDecoder().decode(submit.body)).add_media)).toEqual(['clip (2).mp3']);
+    const body = JSON.parse(new TextDecoder().decode(submit.body));
+    expect(Object.keys(body.add_media)).toEqual(['clip (2).mp3']);
+    // The project already has a composition named "Main", so this import's composition is "Main (2)".
+    expect(body.add_compositions[0].name).toBe('Main (2)');
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
+  });
+
+  it('avoids multitrack names already stored under Sequences/', async () => {
+    const { calls } = fakeDescript();
+    await runImportMedia(
+      input({
+        project_name: undefined,
+        project_id: EXISTING_PROJECT,
+        media: [{ url: 'https://cdn.test/a.mp4' }, { url: 'https://cdn.test/b.mp4' }],
+        multitrack: [{ tracks: [{ media: 1 }, { media: 2 }] }],
+      }),
+    );
+    const body = JSON.parse(new TextDecoder().decode(calls.find((c) => c.method === 'POST')!.body));
+    expect(body.add_media).toHaveProperty(['Multitrack 1 (2)']);
   });
 
   it.each([
