@@ -124,6 +124,9 @@ export async function uploadToSignedUrl(uploadUrl: string, filePath: string, fil
   }
 }
 
+/** 429s are rejected before Descript does any work, so retrying is safe, but not forever. */
+const MAX_RATE_LIMIT_RETRIES = 5;
+
 export class DescriptClient {
   private headers: Record<string, string>;
   private baseUrl: string;
@@ -152,9 +155,13 @@ export class DescriptClient {
 
   private async request<T>(
     path: string,
-    init?: RequestInit & { retriesLeft?: number; raw?: boolean },
+    init?: RequestInit & { retriesLeft?: number; rateLimitRetriesLeft?: number; raw?: boolean },
   ): Promise<T> {
     const retriesLeft = init?.retriesLeft ?? this.retries;
+    const rateLimitRetriesLeft = init?.rateLimitRetriesLeft ?? MAX_RATE_LIMIT_RETRIES;
+    // GET/DELETE can be repeated safely. A POST that got a 5xx may already have created a job
+    // (import, agent edit, publish all spend), so it is never retried automatically.
+    const repeatable = ['GET', 'DELETE', 'HEAD'].includes((init?.method ?? 'GET').toUpperCase());
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -165,15 +172,15 @@ export class DescriptClient {
         signal: controller.signal,
       });
 
-      // 429 — respect Retry-After
-      if (res.status === 429) {
+      // 429 — respect Retry-After, up to MAX_RATE_LIMIT_RETRIES times (separate from the 5xx budget)
+      if (res.status === 429 && rateLimitRetriesLeft > 0) {
         const retryAfter = Number(res.headers.get('Retry-After') ?? 5);
         await new Promise((r) => setTimeout(r, retryAfter * 1000));
-        return this.request<T>(path, init);  // 429s don't count against retries
+        return this.request<T>(path, { ...init, rateLimitRetriesLeft: rateLimitRetriesLeft - 1 });
       }
 
-      // 5xx — retry with exponential backoff
-      if (res.status >= 500 && retriesLeft > 0) {
+      // 5xx — retry repeatable requests with backoff
+      if (res.status >= 500 && repeatable && retriesLeft > 0) {
         const wait = (this.retries - retriesLeft + 1) * 1000;
         await new Promise((r) => setTimeout(r, wait));
         return this.request<T>(path, { ...init, retriesLeft: retriesLeft - 1 });
@@ -197,6 +204,9 @@ export class DescriptClient {
         // 402 = out of AI credits. Ian Gray reported the body carries "X required, Y available";
         // exact shape is unconfirmed, so parse defensively into a clear, actionable message.
         if (res.status === 402) message = formatPaymentRequired(body, message);
+        if (res.status >= 500 && !repeatable) {
+          message = `${message} — Descript may still have created the job; check listJobs before retrying so it isn't started (and paid for) twice.`;
+        }
         throw new DescriptApiError(res.status, message);
       }
 
