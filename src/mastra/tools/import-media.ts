@@ -314,6 +314,14 @@ export const importMediaOutput = z.object({
   media_count: z.number(),
   media_seconds_used: z.number().optional().describe('Media-seconds consumed (transcription). No AI credits — import never invokes Underlord.'),
   status: z.enum(JOB_OUTCOMES).optional().describe('success | partial (some files failed) | error | cancelled. Absent in webhook mode.'),
+  media_status: z
+    .record(z.string(), z.object({ status: z.string(), duration_seconds: z.number().optional(), error_message: z.string().optional() }))
+    .optional()
+    .describe('Per-file result keyed by display name: on a partial import this says which file failed and why.'),
+  created_compositions: z
+    .array(z.object({ id: z.string().optional(), name: z.string().optional() }))
+    .optional()
+    .describe('Compositions the import created (ids usable as composition_id).'),
   error: z.string().optional(),
 });
 
@@ -382,7 +390,7 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
   }
   if (context.callback_url) {
     // Webhook mode: don't poll — Descript will POST the full job result to callback_url.
-    return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, media_count: context.media.length, media_seconds_used: undefined, status: undefined, error: undefined };
+    return { job_id: job.job_id, project_id: job.project_id, project_url: job.project_url, media_count: context.media.length, media_seconds_used: undefined, status: undefined, media_status: undefined, created_compositions: undefined, error: undefined };
   }
   const final = await client.pollJob(job.job_id);
   const { status, error } = jobOutcome(final);
@@ -395,6 +403,10 @@ export async function runImportMedia(context: z.infer<typeof importMediaInput>):
     media_count: context.media.length,
     media_seconds_used: mediaSeconds,
     status,
+    media_status: final.result?.media_status as z.infer<typeof importMediaOutput>['media_status'],
+    created_compositions: Array.isArray(final.result?.created_compositions)
+      ? (final.result.created_compositions as Array<{ id?: string; name?: string }>)
+      : undefined,
     error,
   };
 }

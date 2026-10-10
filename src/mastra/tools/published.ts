@@ -17,7 +17,9 @@ export const getPublishedSubtitles = createTool({
     subtitles: z.string().optional().describe('WEBVTT-format subtitles, when available'),
     title: z.string().optional(),
     duration_seconds: z.number().optional(),
-    publish_type: z.string().optional(),
+    publish_type: z.string().optional().describe('video, audio or audiogram'),
+    privacy: z.string().optional(),
+    published_by: z.string().optional(),
     download_url: z.string().optional(),
   }),
   execute: async (context) => {
@@ -28,6 +30,8 @@ export const getPublishedSubtitles = createTool({
       title: p.metadata?.title,
       duration_seconds: p.metadata?.duration_seconds,
       publish_type: p.publish_type,
+      privacy: p.privacy,
+      published_by: [p.metadata?.published_by?.first_name, p.metadata?.published_by?.last_name].filter(Boolean).join(' ') || undefined,
       download_url: p.download_url,
     };
   },

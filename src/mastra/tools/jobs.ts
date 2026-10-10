@@ -73,8 +73,8 @@ export const listJobs = createTool({
   description: 'List recent Descript jobs, optionally filtered by project_id, type, or date range. Use this when you need to find a recent job whose ID was lost. COST: free — read-only, no AI credits or media minutes.',
   inputSchema: z.object({
     project_id: z.string().uuid().optional(),
-    type: z.string().optional().describe('Filter by job type, e.g. "import/project_media" or "agent"'),
-    created_after: z.string().optional().describe('ISO 8601 datetime'),
+    type: z.enum(['import/project_media', 'agent']).optional().describe('Filter by job type (the API filters import and agent jobs only)'),
+    created_after: z.string().optional().describe('ISO 8601 datetime. Default: 7 days ago; the API keeps at most 30 days.'),
     created_before: z.string().optional().describe('ISO 8601 datetime'),
     cursor: z.string().optional(),
     limit: z.number().int().min(1).max(100).default(20),

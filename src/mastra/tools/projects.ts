@@ -12,6 +12,8 @@ export const listProjects = createTool({
     created_by: z.string().optional().describe('UUID of creator, or "me" for the current user'),
     created_after: z.string().optional().describe('ISO 8601 datetime'),
     created_before: z.string().optional().describe('ISO 8601 datetime'),
+    updated_after: z.string().optional().describe('ISO 8601 datetime: only projects changed after this'),
+    updated_before: z.string().optional().describe('ISO 8601 datetime: only projects changed before this'),
     sort: z.enum(['name', 'created_at', 'updated_at', 'last_viewed_at']).default('created_at'),
     direction: z.enum(['asc', 'desc']).default('desc'),
     cursor: z.string().optional(),
@@ -23,6 +25,7 @@ export const listProjects = createTool({
       name: z.string(),
       created_at: z.string(),
       updated_at: z.string(),
+      folder_path: z.string().optional(),
     })),
     next_cursor: z.string().optional(),
   }),
@@ -33,26 +36,45 @@ export const listProjects = createTool({
   },
 });
 
+export const getProjectOutput = z.object({
+  id: z.string(),
+  name: z.string(),
+  drive_id: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  folder_path: z.string().optional(),
+  media_files: z
+    .record(z.string(), z.object({ type: z.string(), duration: z.number().optional().describe('Seconds; absent for images') }))
+    .describe('Keyed by display path (the names media got on import)'),
+  compositions: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    duration: z.number().optional(),
+    media_type: z.string().optional(),
+  })),
+  publishes: z
+    .array(
+      z.object({
+        share_url: z.string(),
+        composition_id: z.string(),
+        access_level: z.string(),
+        media_type: z.string(),
+        published_at: z.string(),
+        updated_at: z.string(),
+        name: z.string(),
+      }),
+    )
+    .optional()
+    .describe('Existing publishes of this project. Reuse a share_url instead of publishing again.'),
+});
+
 export const getProject = createTool({
   id: 'getProject',
-  description: 'Get full details for a specific Descript project, including its media files and compositions. COST: free — read-only, no AI credits or media minutes.',
+  description: 'Get full details for a specific Descript project: its folder, media files, compositions, and existing publishes (share URLs you can reuse without republishing). COST: free — read-only, no AI credits or media minutes.',
   inputSchema: z.object({
     project_id: z.string().uuid(),
   }),
-  outputSchema: z.object({
-    id: z.string(),
-    name: z.string(),
-    drive_id: z.string(),
-    created_at: z.string(),
-    updated_at: z.string(),
-    media_files: z.record(z.string(), z.object({ type: z.string(), duration: z.number() })),
-    compositions: z.array(z.object({
-      id: z.string(),
-      name: z.string(),
-      duration: z.number(),
-      media_type: z.string(),
-    })),
-  }),
+  outputSchema: getProjectOutput,
   execute: async (context) => {
     const client = new DescriptClient(env.DESCRIPT_API_TOKEN);
     return client.getProject(context.project_id);

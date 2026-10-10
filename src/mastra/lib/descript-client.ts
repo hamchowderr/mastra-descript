@@ -204,6 +204,10 @@ export class DescriptClient {
         // 402 = out of AI credits. Ian Gray reported the body carries "X required, Y available";
         // exact shape is unconfirmed, so parse defensively into a clear, actionable message.
         if (res.status === 402) message = formatPaymentRequired(body, message);
+        // 409 on a published project carries state processing|failed (spec PublishedProjectConflictError).
+        if (res.status === 409 && typeof body !== 'string' && typeof (body as { state?: unknown }).state === 'string') {
+          message = `${message} (state: ${(body as { state: string }).state})`;
+        }
         if (res.status >= 500 && !repeatable) {
           message = `${message} — Descript may still have created the job; check listJobs before retrying so it isn't started (and paid for) twice.`;
         }
@@ -234,8 +238,8 @@ export class DescriptClient {
   }
 
   /** Validate auth + connectivity via GET /status (live since 2026-06-18; returns the token's drive_id + api_version). */
-  async healthcheck(): Promise<{ drive_id?: string; api_version?: string }> {
-    return this.request<{ drive_id?: string; api_version?: string }>('/status', { method: 'GET' });
+  async healthcheck(): Promise<{ drive_id?: string; drive_name?: string; api_version?: string }> {
+    return this.request<{ drive_id?: string; drive_name?: string; api_version?: string }>('/status', { method: 'GET' });
   }
 
   // ---------------------------------------------------------------------------
@@ -276,7 +280,7 @@ export class DescriptClient {
     callback_url?: string;
     /** Continue a prior Underlord session (multi-turn — retains context). Pass the conversation_id from a previous agent job. */
     conversation_id?: string;
-  }): Promise<{ job_id: string; drive_id: string; project_id: string; project_url: string }> {
+  }): Promise<{ job_id: string; drive_id: string; drive_name?: string | null; project_id: string; project_url: string; conversation_id?: string; resolved_model?: string }> {
     return this.request('/jobs/agent', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -310,7 +314,7 @@ export class DescriptClient {
     direction?: 'asc' | 'desc';
     cursor?: string;
     limit?: number;
-  }): Promise<{ data: Array<{ id: string; name: string; created_at: string; updated_at: string }>; pagination: { next_cursor?: string } }> {
+  }): Promise<{ data: Array<{ id: string; name: string; created_at: string; updated_at: string; folder_path?: string }>; pagination: { next_cursor?: string } }> {
     const qs = params ? '?' + new URLSearchParams(
       Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])
     ).toString() : '';
@@ -323,24 +327,43 @@ export class DescriptClient {
     drive_id: string;
     created_at: string;
     updated_at: string;
-    media_files: Record<string, { type: string; duration: number }>;
-    compositions: Array<{ id: string; name: string; duration: number; media_type: string }>;
+    folder_path?: string;
+    /** Keyed by display path. `duration` is absent for images. */
+    media_files: Record<string, { type: 'audio' | 'video' | 'image' | 'sequence' | 'other'; duration?: number }>;
+    compositions: Array<{ id: string; name: string; duration?: number; media_type?: string }>;
+    /** Existing publishes, so share URLs can be reused without republishing. */
+    publishes?: Array<{
+      share_url: string;
+      composition_id: string;
+      access_level: 'public' | 'unlisted' | 'drive' | 'private' | 'password';
+      media_type: 'video' | 'audio' | 'audiogram';
+      published_at: string;
+      updated_at: string;
+      name: string;
+    }>;
   }> {
     return this.request(`/projects/${projectId}`, { method: 'GET' });
   }
 
   /**
    * Partner API: fetch a published project by its URL slug, including WEBVTT `subtitles`.
-   * Read-only (free). This is the ONLY documented subtitle/transcript path — and it is
-   * post-publish only (the slug comes from a published share URL). Rate limit 1000/hr.
+   * Read-only (free). Post-publish only (the slug comes from a published share URL); for any
+   * project use exportTranscript (POST /export/transcript) instead. Rate limit 1000/hr.
+   * Returns 409 with state processing|failed while a publish is still rendering or failed.
    */
   async getPublishedProject(slug: string): Promise<{
     download_url?: string;
     download_url_expires_at?: string;
     project_id?: string;
-    publish_type?: 'video' | 'audio';
-    privacy?: string;
-    metadata?: { title?: string; duration_seconds?: number; duration_formatted?: string; published_at?: string };
+    publish_type?: 'video' | 'audio' | 'audiogram';
+    privacy?: 'public' | 'unlisted' | 'private' | 'drive' | 'password';
+    metadata?: {
+      title?: string;
+      duration_seconds?: number;
+      duration_formatted?: string;
+      published_at?: string;
+      published_by?: { first_name?: string; last_name?: string };
+    };
     subtitles?: string;
   }> {
     return this.request(`/published_projects/${encodeURIComponent(slug)}`, { method: 'GET' });
@@ -391,7 +414,8 @@ export class DescriptClient {
   async search(params: {
     query: string;
     type?: SearchResultType[];
-    match?: Array<'name' | 'content'>;
+    /** `visual` (Enterprise drives only) cannot be combined with another kind. */
+    match?: Array<'name' | 'content' | 'visual'>;
     owner?: string[];
     updated_after?: string;
     updated_before?: string;

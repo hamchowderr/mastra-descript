@@ -13,9 +13,9 @@ export const searchDrive = createTool({
     query: z.string().min(1).describe('Search term, matched against names and contents'),
     type: z.array(resultType).optional().describe('Restrict to these result types (default: all)'),
     match: z
-      .array(z.enum(['name', 'content']))
+      .array(z.enum(['name', 'content', 'visual']))
       .optional()
-      .describe('"name" = names only, "content" = transcripts/composition text only (default: both)'),
+      .describe('"name" = names only, "content" = transcripts/composition text only, "visual" = what appears in videos and images (Enterprise drives only; cannot be combined with another kind). Default: name + content.'),
     owner: z.array(z.string().uuid()).optional().describe('Only items owned by these user UUIDs'),
     updated_after: z.string().optional().describe('ISO 8601 date or timestamp (UTC if no offset)'),
     updated_before: z.string().optional().describe('ISO 8601 date or timestamp (UTC if no offset)'),
@@ -34,6 +34,8 @@ export const searchDrive = createTool({
         folder_id: z.string().optional(),
         location: z.string().optional(),
         duration: z.number().optional(),
+        thumbnail_url: z.string().optional(),
+        brand_studio_id: z.string().optional(),
         owner_name: z.string().optional(),
       }),
     ),
@@ -52,6 +54,8 @@ export const searchDrive = createTool({
         folder_id: h.folder_id,
         location: h.location,
         duration: h.duration,
+        thumbnail_url: h.thumbnail_url,
+        brand_studio_id: h.brand_studio_id,
         owner_name: h.owner?.name,
       })),
     };
