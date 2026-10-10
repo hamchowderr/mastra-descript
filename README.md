@@ -88,7 +88,7 @@ Underlord does the editing. When this agent edits, it sends your instruction to 
 | **Working across the drive** | Edits one project | Searches names and transcript content across the drive (`searchDrive`), exports transcripts in six formats without publishing (`exportTranscript`), reads existing publishes so share links are reused instead of republished |
 | **Long jobs** | n/a | `webhook: true` returns at once; the built-in receiver (`POST /webhooks/descript/<secret>`) re-reads the finished job from Descript and records its spend |
 | **Content workflows** | n/a | Four runtime skills the agent loads on demand: cost-safe editing, podcast polish, social clips, transcript content |
-| **Memory and records** | n/a | Remembers each user's preferences across conversations (resource-scoped working memory), and offers versioned business data through Dolt tools over MCP |
+| **Memory** | n/a | Remembers each user's preferences across conversations (resource-scoped working memory) |
 | **Quality and operations** | n/a | Tool-selection evals in CI, unit tests, traces and metrics in Mastra Studio, optional JWT auth, one-command Docker deploy |
 
 ### How this relates to Descript's own integrations
@@ -207,7 +207,7 @@ curl -X POST http://localhost:4111/api/a2a/descript -H "Content-Type: applicatio
   -d '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"m1","role":"user","parts":[{"kind":"text","text":"List my projects."}]}}}'
 ```
 
-- **MCP:** add `{"url":"http://localhost:4111/api/mcp/descript-mcp/mcp"}` to your MCP client. It exposes the agent as `ask_descript`, the `transcriptExport` workflow, and the Dolt tools (`doltQuery`, `doltWrite`, `doltHistory`).
+- **MCP:** add `{"url":"http://localhost:4111/api/mcp/descript-mcp/mcp"}` to your MCP client. It exposes the agent as `ask_descript` and the `transcriptExport` workflow.
 - **Studio:** `http://localhost:4111` for chat, traces, metrics, and the Agent Editor.
 - **Webhooks:** `POST /webhooks/descript/<DESCRIPT_WEBHOOK_SECRET>` receives Descript job callbacks (off unless the secret is set).
 
@@ -223,7 +223,7 @@ Forked from [`mastra-base`](https://github.com/hamchowderr/mastra-base): a singl
 src/
 ├─ lib/env.ts                     Zod-validated env loader; the process exits on bad config
 └─ mastra/
-   ├─ index.ts                    Entry: env → AIMock → optional Descript healthcheck → Dolt bootstrap → Mastra (MCP, A2A, webhook route)
+   ├─ index.ts                    Entry: env → AIMock → optional Descript healthcheck → Mastra (MCP, A2A, webhook route)
    ├─ agents/_example.ts          descriptAgent: instructions, 14 tools, workflows, workspace
    ├─ lib/
    │  ├─ descript-client.ts       Typed REST client: every endpoint, polling, job outcome, safe retries, 402 parsing
@@ -232,11 +232,10 @@ src/
    │  ├─ cost-meter.ts            Session AI-credit and media-second totals, credit cap
    │  ├─ memory.ts                Resource-scoped working memory + shared LibSQLStore/LibSQLVector
    │  ├─ processors.ts            Shared input/output processors
-   │  ├─ dolt.ts                  Dolt connection + first-boot database bootstrap
    │  ├─ aimock.ts                AIMock routing for deterministic evals
    │  └─ *.test.ts                Unit tests (job states, defaults, retries, fields, webhook)
    ├─ tools/                      importMedia · agentEdit · publish · projects · jobs · published ·
-   │                              cost · agent-models · export-transcript · search · edit-in-descript · dolt
+   │                              cost · agent-models · export-transcript · search · edit-in-descript
    ├─ workflows/                  importEditPublish (approval pause) · transcriptExport
    └─ scorers/                    toolCallAccuracy + answerRelevancy + dataset (13 cases)
 scripts/
@@ -249,7 +248,7 @@ scripts/
 fixtures/ · aimock.json           AIMock fixtures and config
 agent-workspace/skills/           Runtime skills
 .mcp.json · .agents/skills/mastra Dev-time Mastra docs MCP server + Mastra coding skill
-Dockerfile · docker-compose.yml   node:24-slim runtime + Mastra and Dolt services
+Dockerfile · docker-compose.yml   node:24-slim runtime + one Mastra service
 ```
 
 ### Stack
@@ -259,7 +258,7 @@ Dockerfile · docker-compose.yml   node:24-slim runtime + Mastra and Dolt servic
 | Agent framework | [Mastra](https://mastra.ai): `@mastra/core`, `memory`, `evals`, `libsql`, `duckdb`, `observability`, `auth`, `mcp`, `editor` |
 | LLM | Claude Sonnet 5.5 through the [Vercel AI Gateway](https://vercel.com/ai-gateway) (`vercel/anthropic/claude-sonnet-5.5`, set in `src/mastra/lib/models.ts`); Underlord is multi-provider |
 | API server | [Hono](https://hono.dev), mounted by Mastra |
-| Database | [libSQL](https://github.com/tursodatabase/libsql)/[Turso](https://turso.tech): a local `file:` DB in development, hosted Turso in production · DuckDB for traces and metrics · [Dolt](https://www.dolthub.com/) for versioned data. Postgres/pgvector instead? See [`docs/postgres.md`](docs/postgres.md) |
+| Database | [libSQL](https://github.com/tursodatabase/libsql)/[Turso](https://turso.tech): a local `file:` DB in development, hosted Turso in production · DuckDB for traces and metrics. Postgres/pgvector instead? See [`docs/postgres.md`](docs/postgres.md) |
 | Descript CLI | [`@descript/platform-cli`](https://www.npmjs.com/package/@descript/platform-cli) in a sandboxed workspace; ad-hoc exploration only, not the cost-tracked path |
 | Auth | `@mastra/auth` (HS256 JWT, enabled by `MASTRA_JWT_SECRET`) |
 | Testing | [Vitest](https://vitest.dev) unit tests · [AIMock](https://aimock.copilotkit.dev) evals · the `descript:verify` harness |

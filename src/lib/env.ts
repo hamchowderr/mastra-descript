@@ -55,16 +55,6 @@ const envSchema = z
       .default('./agent-workspace')
       .transform((p) => path.resolve(projectRoot(), p)),
 
-    // Dolt (versioned business data) — the compose `dolt` service. Optional so
-    // the app boots without Dolt; the Dolt tools error clearly if it's missing.
-    DOLT_HOST: z.string().optional(),
-    DOLT_PORT: z.coerce.number().int().optional(),
-    DOLT_USER: z.string().optional(),
-    DOLT_PASSWORD: z.string().optional(),
-    DOLT_DATABASE: z.string().optional(),
-    // Attribution written into every Dolt commit by the Dolt tools.
-    AGENT_PERSONA: z.string().default('Mastra Agent <agent@otaku.local>'),
-    DIRECTOR: z.string().default('operator'),
 
     // LLM calls go through the Vercel AI Gateway: one key for every provider (src/mastra/lib/models.ts).
     AI_GATEWAY_API_KEY: z.string().optional(),

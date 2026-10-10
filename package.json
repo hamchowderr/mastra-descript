@@ -34,7 +34,6 @@
     "@mastra/mcp": "^2.2.0",
     "@mastra/memory": "^1.36.0",
     "@mastra/observability": "^1.18.4",
-    "mysql2": "^3.24.5",
     "zod": "^4.6.5"
   },
   "devDependencies": {

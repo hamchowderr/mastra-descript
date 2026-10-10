@@ -9,7 +9,7 @@ way — see `AGENTS.md`.)
 If you'd rather run **Postgres + pgvector** (e.g. you already operate Supabase/
 Neon/RDS, or want Postgres tooling), it's a small, self-contained swap. Nothing
 else in the template depends on the storage backend — the Descript tools, the
-CLI workspace, and Dolt are all unaffected.
+and CLI workspace are unaffected.
 
 ## 1. Install the Postgres packages
 
@@ -160,8 +160,6 @@ services:
       - SUPABASE_DB_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
     depends_on:
       postgres:
-        condition: service_healthy
-      dolt:
         condition: service_healthy
 
   postgres:
