@@ -45,6 +45,11 @@ const descriptMcp = new MCPServer({
 // the secret unset for open local dev. Shared-secret only — no external provider.
 const serverConfig = {
   ...(env.MASTRA_JWT_SECRET ? { auth: new MastraJwtAuth({ secret: env.MASTRA_JWT_SECRET }) } : {}),
+  // Core 1.83 serves Mastra's built-in MCP server at /api/mcp in production whenever
+  // server.auth is set, with every toolset by default. memory/observability expose every
+  // user's threads and traces, and `tools` exposes each agent's internal tools.
+  // Serve only agents + workflows; the explicit mcpServers entry stays as configured.
+  mcp: { toolsets: ['agents', 'workflows'] as ('agents' | 'workflows')[] },
   apiRoutes: [
     // Descript job callbacks. Descript can't send a JWT, so this route skips Mastra auth and is
     // authenticated by DESCRIPT_WEBHOOK_SECRET in the path instead (404 when the secret is unset).
